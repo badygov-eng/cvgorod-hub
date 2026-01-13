@@ -10,6 +10,7 @@ from .settings import (
     DATABASE_URL,
     REDIS_URL,
     DEEPSEEK_API_KEY,
+    ADMIN_IDS,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "DATABASE_URL",
     "REDIS_URL",
     "DEEPSEEK_API_KEY",
+    "ADMIN_IDS",
 ]
