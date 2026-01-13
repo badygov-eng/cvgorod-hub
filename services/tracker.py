@@ -16,8 +16,9 @@ import sys
 from pathlib import Path
 
 # Add paths to find MCP shared modules
+# Use MCP_PATH env var, or default to ~/MCP
 _project_root = Path(__file__).resolve().parent.parent
-_mcp_path = Path("/Users/danielbadygov/MCP")
+_mcp_path = Path(os.getenv("MCP_PATH", str(Path.home() / "MCP")))
 
 # Add both paths
 for p in [_project_root, _mcp_path]:

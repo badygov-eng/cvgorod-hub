@@ -73,7 +73,6 @@ if [[ "$SKIP_BACKUP" == "false" ]]; then
 
     # Create backup directory with timestamp
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-    BACKUP_PATH="$BACKUP_PATH/cvgorod-hub-backup-$TIMESTAMP"
     mkdir -p "$BACKUP_DIR"
 
     # Create archive

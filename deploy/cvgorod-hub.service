@@ -19,7 +19,8 @@ RestartSec=10
 
 # Environment
 Environment=ENVIRONMENT=production
-Environment=SECRETS_PATH=/root/.secrets
+# Use service user's home directory for secrets (not /root/.secrets)
+Environment=SECRETS_PATH=%h/.secrets
 Environment=PYTHONPATH=/home/badygovdaniil/cvgorod-hub
 
 # Resource limits

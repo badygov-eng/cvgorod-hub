@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import Optional
 
 # Add MCP path for shared modules
-mcp_path = Path("/Users/danielbadygov/MCP")
+# Use MCP_PATH env var, or default to ~/MCP
+mcp_path = Path(os.getenv("MCP_PATH", str(Path.home() / "MCP")))
 if mcp_path.exists() and str(mcp_path) not in sys.path:
     sys.path.insert(0, str(mcp_path))
 

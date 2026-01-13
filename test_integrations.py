@@ -9,8 +9,9 @@ import sys
 from pathlib import Path
 
 # Setup paths
-PROJECT_ROOT = Path("/Users/danielbadygov/cvgorod-hub")
-MCP_PATH = Path("/Users/danielbadygov/MCP")
+PROJECT_ROOT = Path(__file__).resolve().parent
+# Use MCP_PATH env var, or default to ~/MCP
+MCP_PATH = Path(os.getenv("MCP_PATH", str(Path.home() / "MCP")))
 
 # Add paths to sys.path for imports
 for p in [str(PROJECT_ROOT), str(MCP_PATH)]:
