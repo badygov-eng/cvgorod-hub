@@ -366,6 +366,7 @@ async def main() -> None:
     
     # Запускаем бота
     logger.info("Starting polling...")
+    await application.initialize()
     await application.start()
     await application.updater.start_polling(
         drop_pending_updates=True,
