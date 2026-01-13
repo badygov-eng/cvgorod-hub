@@ -1,0 +1,28 @@
+# FastAPI и веб-сервер
+fastapi==0.115.5
+uvicorn[standard]==0.32.0
+pydantic==2.10.1
+python-multipart==0.0.20
+
+# Telegram Bot
+python-telegram-bot==21.9
+httpx==0.28.1
+
+# PostgreSQL
+asyncpg==0.30.0
+tenacity==9.0.0
+
+# Redis
+redis==5.2.1
+
+# LLM для классификации
+httpx==0.28.1
+
+# Утилиты
+python-dateutil==2.9.0.post0
+python-dotenv==1.0.1
+
+# Для разработки
+pytest==8.3.3
+pytest-asyncio==0.24.0
+mypy==1.13.0

@@ -1,0 +1,78 @@
+# =============================================================================
+# Cursor Rules for cvgorod-hub
+# =============================================================================
+
+## Информация о проекте
+- **Название**: cvgorod-hub
+- **ID для деплоя**: cvgorod-hub
+- **Путь**: ~/cvgorod-hub
+- **Порты**: 8300-8399
+- **Тип**: Python (Telegram Bot + REST API + PostgreSQL)
+
+## Глобальные правила
+Перед любым изменением инфраструктуры ОБЯЗАТЕЛЬНО прочитай:
+- /Users/danielbadygov/MCP/GLOBAL_RULES.md
+- /Users/danielbadygov/MCP/INFRASTRUCTURE_REGISTRY.md
+- /Users/danielbadygov/MCP/DEVELOPMENT_WORKFLOW.md
+
+## Shared модули MCP (ИСПОЛЬЗОВАТЬ!)
+```python
+# LLM клиенты (DeepSeek)
+from MCP.shared.llm import DeepSeekClient
+
+# GigaChat
+from MCP.shared.gigachat import GigaChatClient
+
+# Загрузка секретов
+from MCP.shared.secrets_loader import load_project_secrets
+```
+
+## Структура проекта
+```
+cvgorod-hub/
+├── api/              # FastAPI endpoints
+├── bot/              # Telegram bot (collector)
+├── services/         # Бизнес-логика
+├── config/           # Конфигурация
+└── scripts/          # Скрипты миграции
+```
+
+## Деплой
+```bash
+mcp deploy --project cvgorod-hub
+```
+
+### Сервер
+- **IP**: 158.160.153.14
+- **Путь**: /home/badygovdaniil/cvgorod-hub
+- **Сервис**: cvgorod-hub
+- **Порт на сервере**: 8300
+
+### Домен
+- `cvgorod-hub.testbotgigachat.org` — Hub API
+
+## Секреты
+Секреты загружаются из `~/.secrets/`:
+- `~/.secrets/cvgorod/hub_api.env` — Hub API key
+- `~/.secrets/telegram/cvgorod.env` — Telegram токен
+- `~/.secrets/cloud/deepseek.env` — DeepSeek API
+
+## Порты
+| Среда | Суффикс | Пример |
+|-------|---------|--------|
+| Production | XX00 | 8300 |
+| Development | XX80 | 8380 |
+
+## Запрещено
+- Использовать порты вне 8300-8399
+- Хардкодить токены и ключи
+- Публиковать порты на 0.0.0.0
+
+## Code Quality Rules
+1. HTTP Timeout — ВСЕГДА (30.0 сек)
+2. Error Handling в FastAPI — с логированием
+3. Pydantic Strict Mode
+4. Type Hints — ВСЕГДА
+
+## Язык
+Отвечать на русском языке.

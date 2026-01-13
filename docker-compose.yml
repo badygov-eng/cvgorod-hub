@@ -1,0 +1,122 @@
+name: cvgorod-hub
+
+services:
+  api:
+    build: .
+    container_name: cvgorod-hub-api
+    ports:
+      - "127.0.0.1:8300:8000"
+    env_file:
+      - .env
+    environment:
+      - SECRETS_PATH=/root/.secrets
+    volumes:
+      - ./api:/app/api:ro
+      - ./bot:/app/bot:ro
+      - ./services:/app/services:ro
+      - ./config:/app/config:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ${HOME}/.secrets:/root/.secrets:ro
+    networks:
+      - cvgorod-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    restart: unless-stopped
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    container_name: cvgorod-hub-bot
+    env_file:
+      - .env
+    environment:
+      - SECRETS_PATH=/root/.secrets
+    volumes:
+      - ./bot:/app/bot:ro
+      - ./services:/app/services:ro
+      - ./config:/app/config:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ${HOME}/.secrets:/root/.secrets:ro
+    networks:
+      - cvgorod-net
+    depends_on:
+      api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: cvgorod-hub-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:6380:6379"
+    networks:
+      - cvgorod-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: cvgorod-hub-postgres
+    environment:
+      POSTGRES_DB: cvgorod_hub
+      POSTGRES_USER: cvgorod
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cvgorod_secret_2024}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "127.0.0.1:5433:5432"
+    networks:
+      - cvgorod-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cvgorod -d cvgorod_hub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    restart: unless-stopped
+
+networks:
+  cvgorod-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
