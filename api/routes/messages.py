@@ -36,6 +36,17 @@ class MessagesListResponse(BaseModel):
     messages: list[MessageResponse]
 
 
+# ВАЖНО: Статические роуты ПЕРЕД динамическими!
+@router.get("/messages/stats/total")
+async def get_messages_stats(
+    api_key: str = Depends(verify_api_key),
+    since: Optional[datetime] = Query(None),
+):
+    """Статистика по сообщениям."""
+    count = await db.get_message_count(since=since)
+    return {"total_messages": count}
+
+
 @router.get("/messages", response_model=MessagesListResponse)
 async def list_messages(
     api_key: str = Depends(verify_api_key),
@@ -86,13 +97,3 @@ async def get_message(
             return MessageResponse(**msg)
     
     raise HTTPException(status_code=404, detail="Message not found")
-
-
-@router.get("/messages/stats/total")
-async def get_messages_stats(
-    api_key: str = Depends(verify_api_key),
-    since: Optional[datetime] = Query(None),
-):
-    """Статистика по сообщениям."""
-    count = await db.get_message_count(since=since)
-    return {"total_messages": count}
