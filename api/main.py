@@ -60,10 +60,10 @@ async def health():
 
 
 # API v1 routes
-app.include_router(messages.router, prefix="/api/v1")
-app.include_router(clients.router, prefix="/api/v1")
-app.include_router(intents.router, prefix="/api/v1")
-app.include_router(send.router, prefix="/api/v1")
+app.include_router(messages, prefix="/api/v1")
+app.include_router(clients, prefix="/api/v1")
+app.include_router(intents, prefix="/api/v1")
+app.include_router(send, prefix="/api/v1")
 
 
 def run():
