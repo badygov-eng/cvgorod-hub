@@ -12,4 +12,5 @@ COPY bot/ ./bot/
 COPY services/ ./services/
 COPY config/ ./config/
 
-CMD ["python", "-c", "from bot.collector import MessageCollector; print('Bot collector module loaded')"]
+# Запуск коллектора сообщений
+CMD ["python", "-m", "bot.collector"]

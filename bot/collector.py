@@ -320,3 +320,62 @@ class MessageCollector:
 # Глобальный экземпляр
 message_collector = MessageCollector()
 
+
+async def main() -> None:
+    """
+    Запуск бота-коллектора сообщений.
+    
+    Инициализирует Telegram Application, регистрирует обработчики
+    и начинает приём сообщений из групп.
+    """
+    import logging
+    from telegram.ext import Application
+    
+    from config import settings
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    logger = logging.getLogger(__name__)
+    
+    if not settings.TELEGRAM_BOT_TOKEN:
+        raise ValueError("TELEGRAM_BOT_TOKEN не задан")
+    
+    logger.info("Starting Message Collector Bot...")
+    
+    # Создаём Application
+    application = (
+        Application.builder()
+        .token(settings.TELEGRAM_BOT_TOKEN)
+        .post_init(lambda app: logger.info("Bot initialized"))
+        .build()
+    )
+    
+    # Регистрируем обработчики
+    message_collector.register_handlers(application)
+    
+    # Инициализируем коллектор (загружает менеджеров из БД)
+    await message_collector.initialize()
+    
+    # Запускаем бота
+    logger.info("Starting polling...")
+    await application.start()
+    await application.updater.start_polling(
+        drop_pending_updates=True,
+        timeout=30,
+    )
+    
+    # Ожидаем завершения
+    try:
+        await application.updater.stop()
+    except KeyboardInterrupt:
+        logger.info("Shutting down...")
+        await application.stop()
+        await application.shutdown()
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
+
