@@ -58,12 +58,12 @@ pull_db() {
     echo_step "Pulling PostgreSQL database..."
 
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-    BACKUP_FILE="$LOCAL_BACKUPS_DIR/db_backup_$TIMESTAMP.sql.gz"
+    BACKUP_FILE="$LOCAL_BACKUPS_DIR/db_backup_$TIMESTAMP.sql"
 
     # Create local backup directory
     mkdir -p "$LOCAL_BACKUPS_DIR"
 
-    # Dump remote database and download
+    # Dump remote database and download (decompress locally)
     ssh -i "$SSH_KEY" badygovdaniil@$SERVER "
         cd $REMOTE_DIR
         docker compose exec -T postgres pg_dump -U cvgorod cvgorod_hub | gzip
