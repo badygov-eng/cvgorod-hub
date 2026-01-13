@@ -3,28 +3,58 @@ Settings for cvgorod-hub.
 """
 
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
 
+def _setup_mcp_path() -> None:
+    """Add MCP shared modules to Python path."""
+    mcp_path = Path("/Users/danielbadygov/MCP")
+    if mcp_path.exists() and str(mcp_path) not in sys.path:
+        sys.path.insert(0, str(mcp_path))
+
+
 def _load_secrets() -> None:
     """Загрузка секретов из централизованного хранилища ~/.secrets/."""
+    # Сначала настраиваем путь к MCP
+    _setup_mcp_path()
+
+    # Пытаемся использовать centralized loader из MCP
+    try:
+        from MCP.shared.secrets_loader import load_project_secrets
+
+        # Загружаем секреты для проекта cvgorod-hub
+        load_project_secrets("cvgorod-hub")
+        return
+    except ImportError:
+        # Fallback: ручная загрузка если MCP недоступен
+        pass
+
+    # Ручная загрузка (fallback)
     secrets_base = Path(os.getenv("SECRETS_PATH", str(Path.home() / '.secrets')))
-    
+
     secret_files = [
         secrets_base / 'telegram' / 'cvgorod.env',
         secrets_base / 'cvgorod' / 'hub_api.env',
         secrets_base / 'cloud' / 'deepseek.env',
     ]
-    
+
     loaded = []
     for secret_file in secret_files:
         if secret_file.exists():
             load_dotenv(secret_file, override=False)
             loaded.append(secret_file.name)
-    
-    # Локальные настройки
-    load_dotenv('.env', override=False)
+
+    # Загружаем environment-specific .env файл
+    env = os.getenv("ENVIRONMENT", "development")
+    env_file = f".env.{env}" if env != "development" else ".env"
+    env_path = Path(env_file)
+    if env_path.exists():
+        load_dotenv(env_path, override=True)
+    else:
+        # Fallback на базовый .env
+        load_dotenv('.env', override=False)
 
 
 _load_secrets()
@@ -57,3 +87,17 @@ INTENT_CLASSIFIER_BATCH_SIZE = int(os.getenv("INTENT_CLASSIFIER_BATCH_SIZE", "10
 # Sandbox settings
 SANDBOX_ENABLED = os.getenv("SANDBOX_ENABLED", "true").lower() == "true"
 ADMIN_IDS = [int(_id) for _id in os.getenv("ADMIN_IDS", "").split(",") if _id.strip().isdigit()]
+
+# =============================================================================
+# Yandex Tracker Settings
+# =============================================================================
+TRACKER_ENABLED = os.getenv("TRACKER_ENABLED", "true").lower() == "true"
+TRACKER_TOKEN = os.getenv("TRACKER_TOKEN")
+TRACKER_ORG_ID = os.getenv("TRACKER_ORG_ID")
+TRACKER_QUEUE = os.getenv("TRACKER_QUEUE", "TGBOTCG")
+
+# =============================================================================
+# Perplexity Settings (AI Search)
+# =============================================================================
+PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
+PERPLEXITY_MODEL = os.getenv("PERPLEXITY_MODEL", "sonar")

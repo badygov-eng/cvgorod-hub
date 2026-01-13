@@ -1,0 +1,44 @@
+[Unit]
+Description=cvgorod-hub API - CRM Message Hub
+Documentation=https://github.com/badygovdaniil/cvgorod-hub
+After=network.target postgresql.service redis-server.service
+Wants=postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=badygovdaniil
+Group=badygovdaniil
+WorkingDirectory=/home/badygovdaniil/cvgorod-hub
+
+# Virtual environment with Python
+ExecStart=/home/badygovdaniil/cvgorod-hub/venv/bin python main.py
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+# Environment
+Environment=ENVIRONMENT=production
+Environment=SECRETS_PATH=/root/.secrets
+Environment=PYTHONPATH=/home/badygovdaniil/cvgorod-hub
+
+# Resource limits
+MemoryMax=512M
+MemoryHigh=384M
+CPUQuota=80%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cvgorod-hub
+
+# Health check
+ExecStartPost=/bin/sleep 5
+ExecStartPost=/bin/bash -c 'curl -sf http://127.0.0.1:8000/health || exit 1'
+
+# Graceful shutdown
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

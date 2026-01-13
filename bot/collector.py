@@ -8,6 +8,7 @@ Message Collector Service для CVGorod.
 - Текстовые сообщения
 - Голосовые сообщения (с расшифровкой через Yandex SpeechKit)
 - Определение ролей (директор, менеджер, бот, клиент)
+- Интеграция с Yandex Tracker для логирования событий
 """
 
 import logging
@@ -21,6 +22,7 @@ from telegram.ext import Application, ContextTypes
 from services.database import db
 from services.role_repository import role_repository, get_user_role, is_staff
 from services.yandex_stt import get_stt
+from services.tracker import tracker, log_telegram_message, log_database_operation
 from config.roles import (
     MANAGER_IDS, BOT_IDS, MANAGER_NAMES,
     UserRole
@@ -93,6 +95,13 @@ class MessageCollector:
             # Сохранение в базу
             await self._save_to_database(message_data)
 
+            # Логируем сообщение в Tracker
+            await log_telegram_message(
+                chat_id=chat_id,
+                message_type=message_data["message_type"],
+                has_intent=bool(message_data.get("pattern_id")),
+            )
+
             logger.debug(
                 f"Message saved: chat={chat_id}, user={user_id}, "
                 f"text={message_data['text'][:50]}..."
@@ -100,6 +109,15 @@ class MessageCollector:
 
         except Exception as e:
             logger.error(f"Error processing message: {e}", exc_info=True)
+            # Логируем ошибку в Yandex Tracker
+            await tracker.error(
+                summary=f"Error processing Telegram message",
+                data={
+                    "error": str(e),
+                    "chat_id": chat_id if 'chat_id' in locals() else None,
+                    "user_id": user_id if 'user_id' in locals() else None,
+                },
+            )
 
     async def _parse_message(
         self,
@@ -242,6 +260,7 @@ class MessageCollector:
 
     async def _save_to_database(self, data: Dict[str, Any]) -> None:
         """Сохраняет данные сообщения в базу."""
+        start_time = datetime.utcnow()
         try:
             # Сохраняем или обновляем чат
             await db.get_or_create_chat(
@@ -294,7 +313,25 @@ class MessageCollector:
                 pattern_id,
             )
 
+            # Логируем успешную операцию в Tracker
+            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            await log_database_operation(
+                operation="save_message",
+                table="messages",
+                success=True,
+                duration_ms=duration_ms,
+            )
+
         except Exception as e:
+            # Логируем ошибку в Tracker
+            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            await log_database_operation(
+                operation="save_message",
+                table="messages",
+                success=False,
+                duration_ms=duration_ms,
+                error=str(e),
+            )
             logger.error(f"Error saving to database: {e}", exc_info=True)
             raise
 
@@ -349,7 +386,11 @@ async def main() -> None:
     logger.info("Connecting to database...")
     await db.connect()
     logger.info("Database connected")
-    
+
+    # Инициализируем Tracker
+    from services.tracker import init_tracker, shutdown_tracker
+    await init_tracker()
+
     # Создаём Application
     application = (
         Application.builder()
@@ -378,6 +419,7 @@ async def main() -> None:
         await application.updater.stop()
     except KeyboardInterrupt:
         logger.info("Shutting down...")
+        await shutdown_tracker()
         await application.stop()
         await application.shutdown()
 

@@ -4,8 +4,9 @@ REST API для работы с сообщениями, клиентами и п
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import AsyncGenerator, List
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,31 @@ from config import settings
 from api.routes import messages, clients, intents, send
 
 logger = logging.getLogger(__name__)
+
+
+def get_cors_origins() -> List[str]:
+    """Получить разрешённые origins в зависимости от среды."""
+    env = os.getenv("ENVIRONMENT", "development")
+
+    if env == "production":
+        # Production: настраивается через nginx с заголовками
+        # API доступен только через прокси
+        return []
+
+    if env == "staging":
+        # Staging: локальный доступ + разрешённые домены
+        return [
+            "http://localhost:8309",
+            "http://127.0.0.1:8309",
+        ]
+
+    # Development: широкий доступ для разработки
+    return [
+        "http://localhost:8308",
+        "http://localhost:3000",
+        "http://127.0.0.1:8308",
+        "http://127.0.0.1:3000",
+    ]
 
 
 @asynccontextmanager
@@ -43,10 +69,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
+# CORS - настраивается в зависимости от среды
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
