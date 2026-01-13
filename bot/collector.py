@@ -332,6 +332,7 @@ async def main() -> None:
     from telegram.ext import Application
     
     from config import settings
+    from services.database import db
     
     logging.basicConfig(
         level=logging.INFO,
@@ -343,6 +344,11 @@ async def main() -> None:
         raise ValueError("TELEGRAM_BOT_TOKEN не задан")
     
     logger.info("Starting Message Collector Bot...")
+    
+    # Подключаемся к базе данных
+    logger.info("Connecting to database...")
+    await db.connect()
+    logger.info("Database connected")
     
     # Создаём Application
     application = (
