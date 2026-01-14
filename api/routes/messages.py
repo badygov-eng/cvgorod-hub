@@ -3,7 +3,7 @@ Messages API routes.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -103,11 +103,13 @@ async def get_messages_stats_by_role(
     
     query = """
         SELECT
-            COALESCE(m.role, 'UNKNOWN') as role,
+            COALESCE(m.role, ur.role_name, 'UNKNOWN') as role,
             COUNT(*) as message_count,
             COUNT(DISTINCT m.chat_id) as active_chats,
             COUNT(DISTINCT m.user_id) as active_users
         FROM messages m
+        LEFT JOIN users u ON m.user_id = u.id
+        LEFT JOIN user_roles ur ON u.role_id = ur.id
         WHERE 1=1
     """
     params = []
@@ -127,7 +129,7 @@ async def get_messages_stats_by_role(
         params.append(until)
         param_idx += 1
     
-    query += " GROUP BY m.role ORDER BY message_count DESC"
+    query += " GROUP BY COALESCE(m.role, ur.role_name, 'UNKNOWN') ORDER BY message_count DESC"
     
     rows = await db.fetch(query, *params)
     stats = {
@@ -213,6 +215,93 @@ async def list_messages(
             "has_more": offset + len(messages_list) < total
         }
     )
+
+
+
+@router.get("/messages/data")
+async def get_messages_report_data(
+    report_date: date = Query(default=None, description="Дата отчёта (YYYY-MM-DD)"),
+    _: str = Depends(verify_api_key),
+):
+    """
+    Получить данные сообщений за указанную дату для отчёта.
+    Если дата не указана — возвращает данные за вчера.
+    """
+    if report_date is None:
+        report_date = date.today() - timedelta(days=1)
+    
+    start_dt = datetime.combine(report_date, datetime.min.time())
+    end_dt = datetime.combine(report_date + timedelta(days=1), datetime.min.time())
+    
+    query = """
+        SELECT 
+            m.id,
+            to_char(m.timestamp, 'HH24:MI:SS') as time,
+            m.timestamp,
+            m.text,
+            m.message_type,
+            m.chat_id,
+            c.name as chat_name,
+            m.user_id,
+            COALESCE(u.username, '') as username,
+            COALESCE(u.first_name, '') as first_name,
+            COALESCE(u.last_name, '') as last_name,
+            COALESCE(u.is_manager, false) as is_manager,
+            COALESCE(ur.role_name, 'client') as user_role
+        FROM messages m
+        LEFT JOIN chats c ON m.chat_id = c.id
+        LEFT JOIN users u ON m.user_id = u.id
+        LEFT JOIN user_roles ur ON u.role_id = ur.id
+        WHERE m.timestamp >= $1 AND m.timestamp < $2
+        ORDER BY m.chat_id, m.timestamp ASC
+    """
+    
+    rows = await db.fetch(query, start_dt, end_dt)
+    messages = [dict(row) for row in rows]
+    
+    for msg in messages:
+        if msg.get('timestamp'):
+            msg['timestamp'] = msg['timestamp'].isoformat()
+    
+    total = len(messages)
+    bot_count = sum(1 for m in messages if m['user_role'] == 'assistant_bot')
+    client_count = sum(1 for m in messages if m['user_role'] == 'client')
+    unique_chats = len(set(m['chat_id'] for m in messages))
+    
+    return {
+        "date": report_date.isoformat(),
+        "stats": {
+            "total": total,
+            "bot_messages": bot_count,
+            "client_messages": client_count,
+            "unique_chats": unique_chats,
+        },
+        "messages": messages,
+    }
+
+
+@router.get("/messages/dates")
+async def get_available_dates(
+    _: str = Depends(verify_api_key),
+):
+    """Получить список дат с сообщениями."""
+    query = """
+        SELECT 
+            DATE(timestamp) as msg_date,
+            COUNT(*) as count
+        FROM messages
+        GROUP BY DATE(timestamp)
+        ORDER BY msg_date DESC
+        LIMIT 90
+    """
+    rows = await db.fetch(query)
+    
+    dates = [
+        {"date": row['msg_date'].isoformat(), "count": row['count']}
+        for row in rows
+    ]
+    
+    return {"dates": dates}
 
 
 @router.get("/messages/{message_id}", response_model=MessageDetailResponse)

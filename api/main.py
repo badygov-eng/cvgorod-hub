@@ -89,11 +89,11 @@ async def health():
 
 
 # API v1 routes
-app.include_router(messages, prefix="/api/v1")
+app.include_router(reports, prefix="/api/v1")  # reports first for /messages/data
 app.include_router(clients, prefix="/api/v1")
 app.include_router(intents, prefix="/api/v1")
 app.include_router(send, prefix="/api/v1")
-app.include_router(reports, prefix="/api/v1")
+app.include_router(messages, prefix="/api/v1")
 
 
 # Public reports page (no auth required)

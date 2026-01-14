@@ -191,7 +191,7 @@ class Database:
                 u.username,
                 u.first_name,
                 u.last_name,
-                ur.role_name as user_role,
+                COALESCE(m.role, ur.role_name) as role,
                 u.is_manager,
                 uc.role as chat_role,
                 uc.joined_at,
@@ -310,8 +310,8 @@ class Database:
         days: int = 30,
     ) -> dict[str, Any]:
         """Возвращает статистику пользователя."""
-        from datetime import timedelta
-        days_interval = timedelta(days=days)
+        from datetime import datetime, timedelta
+        since_dt = datetime.utcnow() - timedelta(days=days)
         
         # Основная статистика
         query = """
@@ -328,11 +328,11 @@ class Database:
             FROM users u
             LEFT JOIN user_roles ur ON u.role_id = ur.id
             LEFT JOIN messages m ON u.id = m.user_id
-                AND m.timestamp >= NOW() - $1
+                AND m.timestamp >= $1
             WHERE u.id = $2
             GROUP BY u.id, ur.role_name
         """
-        row = await db.fetchrow(query, days_interval, user_id)
+        row = await db.fetchrow(query, since_dt, user_id)
         
         if not row:
             return {}
@@ -346,18 +346,18 @@ class Database:
                 COUNT(*) as count
             FROM messages m
             WHERE m.user_id = $1
-                AND m.timestamp >= NOW() - $2
+                AND m.timestamp >= $2
             GROUP BY m.role
         """
-        role_rows = await db.fetch(role_query, user_id, days_interval)
+        role_rows = await db.fetch(role_query, user_id, since_dt)
         result["by_role"] = [dict(r) for r in role_rows]
         
         # Статистика рассылок
         mailing_query = """
             SELECT
                 COUNT(*) as total_campaigns,
-                COALESCE(SUM(mcm.status = 'SENT'), 0) as successful,
-                COALESCE(SUM(mcm.status = 'FAILED'), 0) as failed
+                COUNT(*) FILTER (WHERE mcm.status = 'SENT') as successful,
+                COUNT(*) FILTER (WHERE mcm.status = 'FAILED') as failed
             FROM mailing_campaigns mc
             LEFT JOIN mailing_campaign_messages mcm ON mc.id = mcm.campaign_id
             WHERE mc.sent_by_user_id = $1
@@ -636,7 +636,7 @@ class Database:
                 m.*,
                 u.username,
                 u.first_name,
-                ur.role_name as user_role,
+                COALESCE(m.role, ur.role_name) as role,
                 c.name as chat_name
             FROM messages m
             LEFT JOIN users u ON m.user_id = u.id
@@ -972,25 +972,27 @@ class Database:
         # Статистика по ролям
         role_query = """
             SELECT
-                COALESCE(role, 'UNKNOWN') as role,
+                COALESCE(m.role, ur.role_name, 'UNKNOWN') as role,
                 COUNT(*) as count
-            FROM messages
+            FROM messages m
+            LEFT JOIN users u ON m.user_id = u.id
+            LEFT JOIN user_roles ur ON u.role_id = ur.id
             WHERE 1=1
         """
         params2 = []
         param_idx2 = 1
 
         if since is not None:
-            role_query += f" AND timestamp >= ${param_idx2}"
+            role_query += f" AND m.timestamp >= ${param_idx2}"
             params2.append(since)
             param_idx2 += 1
 
         if until is not None:
-            role_query += f" AND timestamp <= ${param_idx2}"
+            role_query += f" AND m.timestamp <= ${param_idx2}"
             params2.append(until)
             param_idx2 += 1
 
-        role_query += " GROUP BY role ORDER BY count DESC"
+        role_query += " GROUP BY COALESCE(m.role, ur.role_name, 'UNKNOWN') ORDER BY count DESC"
 
         role_rows = await db.fetch(role_query, *params2)
 
@@ -1027,7 +1029,7 @@ class Database:
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Возвращает вопросы клиентов без ответов."""
-        from datetime import timedelta
+        from datetime import datetime, timedelta
         since = datetime.utcnow() - timedelta(hours=hours)
         response_window_hours = hours  # Окно для проверки ответа менеджера
         
