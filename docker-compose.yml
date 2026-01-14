@@ -12,6 +12,8 @@ services:
       - SECRETS_PATH=/root/.secrets
       - HUB_API_HOST=0.0.0.0
       - HUB_API_PORT=8000
+      - DATABASE_URL=postgresql://cvgorod:cvgorod_secret_2024@postgres:5432/cvgorod_hub
+      - REDIS_URL=redis://redis:6379
     volumes:
       - ./api:/app/api:ro
       - ./bot:/app/bot:ro
