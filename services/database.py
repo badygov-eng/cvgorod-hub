@@ -276,8 +276,9 @@ class Database:
         param_idx = 1
 
         if role is not None:
-            conditions.append(f"ur.role_name = ${param_idx}")
-            params.append(role)
+            # Case-insensitive сравнение ролей
+            conditions.append(f"UPPER(COALESCE(ur.role_name, u.role, '')) = ${param_idx}")
+            params.append(role.upper())
             param_idx += 1
 
         if not include_inactive:
@@ -450,15 +451,23 @@ class Database:
         Returns:
             Список user_id не-клиентов
         """
+        # Используем UPPER для case-insensitive сравнения ролей
+        # LEFT JOIN чтобы не падать если user_roles не существует
         query = """
             SELECT DISTINCT u.id
             FROM users u
-            JOIN user_roles ur ON u.role_id = ur.id
+            LEFT JOIN user_roles ur ON u.role_id = ur.id
             WHERE ur.exclude_from_analytics = TRUE
+                OR u.is_manager = TRUE
+                OR UPPER(COALESCE(u.role, '')) IN ('MANAGER', 'DIRECTOR', 'BOT', 'ADMIN')
         """
-        async with self.acquire() as conn:
-            rows = await conn.fetch(query)
-        return [row["id"] for row in rows]
+        try:
+            async with self.acquire() as conn:
+                rows = await conn.fetch(query)
+            return [row["id"] for row in rows]
+        except Exception:
+            # Если таблица user_roles не существует, возвращаем пустой список
+            return []
 
     async def get_patterns_by_type(self, pattern_type: str) -> list[dict[str, Any]]:
         """
@@ -582,8 +591,9 @@ class Database:
             param_idx += 1
 
         if role is not None:
-            conditions.append(f"m.role = ${param_idx}")
-            params.append(role)
+            # Case-insensitive сравнение ролей
+            conditions.append(f"UPPER(COALESCE(m.role, '')) = ${param_idx}")
+            params.append(role.upper())
             param_idx += 1
 
         if exclude_automatic:
@@ -683,8 +693,9 @@ class Database:
             param_idx += 1
 
         if role is not None:
-            conditions.append(f"m.role = ${param_idx}")
-            params.append(role)
+            # Case-insensitive сравнение ролей
+            conditions.append(f"UPPER(COALESCE(m.role, '')) = ${param_idx}")
+            params.append(role.upper())
             param_idx += 1
 
         if since is not None:
@@ -773,8 +784,9 @@ class Database:
             param_idx += 1
 
         if role is not None:
-            conditions.append(f"role = ${param_idx}")
-            params.append(role)
+            # Case-insensitive сравнение ролей
+            conditions.append(f"UPPER(COALESCE(role, '')) = ${param_idx}")
+            params.append(role.upper())
             param_idx += 1
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"
@@ -1016,7 +1028,9 @@ class Database:
     ) -> list[dict[str, Any]]:
         """Возвращает вопросы клиентов без ответов."""
         from datetime import timedelta
-        hours_interval = timedelta(hours=hours)
+        since = datetime.utcnow() - timedelta(hours=hours)
+        response_window_hours = hours  # Окно для проверки ответа менеджера
+        
         query = """
             SELECT
                 m.id as message_id,
@@ -1030,20 +1044,20 @@ class Database:
             FROM messages m
             LEFT JOIN chats c ON m.chat_id = c.id
             LEFT JOIN users u ON m.user_id = u.id
-            WHERE m.role = 'CLIENT'
+            WHERE UPPER(m.role) = 'CLIENT'
                 AND (m.text LIKE '%?%' OR LOWER(m.text) LIKE any(ARRAY['%есть ли%', '%сколько%', '%когда%', '%можно ли%', '%подскажите%']))
                 AND NOT EXISTS (
                     SELECT 1 FROM messages m2
                     WHERE m2.chat_id = m.chat_id
                         AND m2.timestamp > m.timestamp
-                        AND m2.timestamp < m.timestamp + $1
-                        AND m2.role = 'MANAGER'
+                        AND m2.timestamp < m.timestamp + INTERVAL '1 hour' * $1
+                        AND UPPER(m2.role) = 'MANAGER'
                 )
-                AND m.timestamp > NOW() - $2
+                AND m.timestamp > $2
             ORDER BY m.timestamp DESC
             LIMIT $3
         """
-        rows = await db.fetch(query, hours_interval, hours_interval, limit)
+        rows = await db.fetch(query, response_window_hours, since, limit)
         return [dict(row) for row in rows]
 
 

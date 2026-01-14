@@ -67,20 +67,40 @@ class MessagesListResponse(BaseModel):
 @router.get("/messages/stats/total")
 async def get_messages_stats(
     api_key: str = Depends(verify_api_key),
-    since: datetime | None = Query(None),
+    days: int | None = Query(None, ge=1, le=365, description="Количество дней назад"),
+    since: datetime | None = Query(None, description="Начало периода (ISO format)"),
 ):
-    """Статистика по сообщениям."""
+    """Статистика по сообщениям.
+    
+    Можно использовать либо days, либо since (days имеет приоритет).
+    """
+    from datetime import timedelta
+    
+    # days имеет приоритет над since
+    if days is not None:
+        since = datetime.utcnow() - timedelta(days=days)
+    
     count = await db.get_message_count(since=since)
-    return {"total_messages": count}
+    return {"total_messages": count, "days": days, "since": since.isoformat() if since else None}
 
 
 @router.get("/messages/stats/by-role")
 async def get_messages_stats_by_role(
     api_key: str = Depends(verify_api_key),
+    days: int | None = Query(None, ge=1, le=365, description="Количество дней назад"),
     since: datetime | None = Query(None),
     until: datetime | None = Query(None),
 ):
-    """Статистика сообщений по ролям."""
+    """Статистика сообщений по ролям.
+    
+    Можно использовать либо days, либо since (days имеет приоритет).
+    """
+    from datetime import timedelta
+    
+    # days имеет приоритет над since
+    if days is not None:
+        since = datetime.utcnow() - timedelta(days=days)
+    
     query = """
         SELECT
             COALESCE(m.role, 'UNKNOWN') as role,
@@ -138,6 +158,7 @@ async def list_messages(
         False,
         description="Только сообщения клиентов (исключает ботов и сотрудников)"
     ),
+    days: int | None = Query(None, ge=1, le=365, description="Количество дней назад"),
     since: datetime | None = Query(None),
     until: datetime | None = Query(None),
     limit: int = Query(100, ge=1, le=1000),
@@ -153,11 +174,18 @@ async def list_messages(
         exclude_automatic: Исключить автоматические сообщения от ботов
         has_intent: Фильтр по интенту сообщения
         clients_only: Только сообщения клиентов
+        days: Количество дней назад (приоритет над since)
         since: Начало периода
         until: Конец периода
         limit: Максимум записей
         offset: Сдвиг для пагинации
     """
+    from datetime import timedelta
+    
+    # days имеет приоритет над since
+    if days is not None:
+        since = datetime.utcnow() - timedelta(days=days)
+    
     messages_list = await db.get_messages(
         chat_id=chat_id,
         user_id=user_id,
@@ -170,14 +198,19 @@ async def list_messages(
         limit=limit,
         offset=offset,
     )
+    
+    # Получаем общее количество для пагинации
+    total = await db.get_message_count(since=since, role=role)
 
     return MessagesListResponse(
         count=len(messages_list),
+        total=total,
         messages=[MessageResponse(**msg) for msg in messages_list],
         pagination={
             "limit": limit,
             "offset": offset,
-            "has_more": len(messages_list) == limit
+            "total": total,
+            "has_more": offset + len(messages_list) < total
         }
     )
 

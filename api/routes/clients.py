@@ -134,17 +134,21 @@ async def list_users(
     Получение списка пользователей с фильтрацией по роли.
 
     Args:
-        role: Фильтр по роли пользователя
+        role: Фильтр по роли пользователя (case-insensitive)
         include_inactive: Включить неактивных пользователей
         limit: Максимум записей
         offset: Сдвиг для пагинации
     """
     valid_roles = ["CLIENT", "MANAGER", "DIRECTOR", "BOT"]
-    if role is not None and role not in valid_roles:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid role. Must be one of: {valid_roles}"
-        )
+    
+    # Нормализуем роль к верхнему регистру
+    if role is not None:
+        role = role.upper()
+        if role not in valid_roles:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid role. Must be one of: {valid_roles}"
+            )
 
     users_list = await db.get_users(
         role=role,
@@ -367,18 +371,18 @@ async def get_active_clients(
     days: int = Query(7, ge=1, le=365),
 ):
     """Статистика активных клиентов за период."""
-    # Use timedelta and pass as interval using asyncpg's interval support
     from datetime import timedelta
-    interval = timedelta(days=days)
+    since = datetime.utcnow() - timedelta(days=days)
+    
     query = """
         SELECT COUNT(DISTINCT user_id) as active_users
         FROM messages
-        WHERE timestamp >= NOW() - $1
-            AND role = 'CLIENT'
+        WHERE timestamp >= $1
+            AND UPPER(role) = 'CLIENT'
     """
-    result = await db.fetchval(query, interval)
+    result = await db.fetchval(query, since)
 
-    return {"active_clients": result or 0}
+    return {"active_clients": result or 0, "days": days}
 
 
 # ============================================================
@@ -455,10 +459,20 @@ async def list_mailings(
 @router.get("/analytics/conversations", response_model=ConversationAnalyticsResponse)
 async def get_conversation_analytics(
     api_key: str = Depends(verify_api_key),
+    days: int | None = Query(None, ge=1, le=365, description="Количество дней назад"),
     since: datetime | None = Query(None),
     until: datetime | None = Query(None),
 ):
-    """Аналитика диалогов с учётом ролей."""
+    """Аналитика диалогов с учётом ролей.
+    
+    Можно использовать либо days, либо since (days имеет приоритет).
+    """
+    from datetime import timedelta
+    
+    # days имеет приоритет над since
+    if days is not None:
+        since = datetime.utcnow() - timedelta(days=days)
+    
     analytics = await db.get_conversation_analytics(since=since, until=until)
 
     return ConversationAnalyticsResponse(
