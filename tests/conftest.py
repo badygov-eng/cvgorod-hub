@@ -3,20 +3,17 @@ Pytest fixtures for cvgorod-hub tests.
 Includes MCP shared fixtures for consistent testing across projects.
 """
 
-import pytest
 import asyncio
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# Добавляем путь к корню проекта и MCP
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
+import pytest
 
-# Попытка добавить MCP path для shared fixtures
-mcp_path = Path("/Users/danielbadygov/MCP")
-if mcp_path.exists() and str(mcp_path) not in sys.path:
-    sys.path.insert(0, str(mcp_path))
+
+# Add path to project root
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
 
 @pytest.fixture(scope="session")
@@ -48,18 +45,45 @@ def mock_settings():
 
 @pytest.fixture
 def mock_database():
-    """Mock database connection."""
+    """Create a properly mocked database instance."""
+    # Create mock instance
     mock_db = MagicMock()
+    
+    # Mock async methods
     mock_db.connect = AsyncMock()
     mock_db.close = AsyncMock()
-    mock_db.pool = MagicMock()
-
-    # Mock async context manager
+    mock_db.fetch = AsyncMock(return_value=[])
+    mock_db.fetchrow = AsyncMock(return_value=None)
+    mock_db.fetchval = AsyncMock(return_value=None)
+    mock_db.execute = AsyncMock(return_value="OK")
+    
+    # Mock pool property
+    mock_pool = MagicMock()
+    mock_db.pool = mock_pool
+    
+    # Mock acquire context manager
     mock_ctx = MagicMock()
     mock_ctx.__aenter__ = AsyncMock(return_value=mock_ctx)
-    mock_ctx.__aexit__ = AsyncMock()
-    mock_db.acquire.return_value = mock_ctx
-
+    mock_ctx.__aexit__ = AsyncMock(return_value=None)
+    mock_db.acquire = MagicMock(return_value=mock_ctx)
+    
+    # Mock database methods used in routes
+    mock_db.get_messages = AsyncMock(return_value=[])
+    mock_db.get_users = AsyncMock(return_value=[])
+    mock_db.get_all_managers = AsyncMock(return_value=[])
+    mock_db.get_user = AsyncMock(return_value=None)
+    mock_db.get_user_statistics = AsyncMock(return_value={})
+    mock_db.update_user_role = AsyncMock(return_value=True)
+    mock_db.get_conversation_analytics = AsyncMock(return_value={})
+    mock_db.get_unanswered_questions = AsyncMock(return_value=[])
+    mock_db.get_mailing_campaigns = AsyncMock(return_value=[])
+    mock_db.get_chat = AsyncMock(return_value=None)
+    mock_db.get_chat_participants = AsyncMock(return_value=[])
+    mock_db.get_message_count = AsyncMock(return_value=0)
+    mock_db.get_all_non_client_ids = AsyncMock(return_value=[])
+    mock_db.get_all_staff_ids = AsyncMock(return_value=[])
+    mock_db.get_all_bot_ids = AsyncMock(return_value=[])
+    
     return mock_db
 
 
@@ -84,13 +108,19 @@ def mock_deepseek_response():
 @pytest.fixture
 def client(mock_settings, mock_database):
     """FastAPI test client with mocked dependencies."""
-    with patch.dict("os.environ", mock_settings):
-        with patch("services.database.db", mock_database):
-            from api.main import app
-            from fastapi.testclient import TestClient
-
-            with TestClient(app) as c:
-                yield c
+    with patch.dict("os.environ", mock_settings, clear=False):
+        # Patch the Database class singleton
+        with patch("services.database.Database") as MockDatabase:
+            MockDatabase.return_value = mock_database
+            
+            # Also patch the module-level db instance
+            with patch("services.database.db", mock_database):
+                # Force reimport of modules that use db
+                from fastapi.testclient import TestClient
+                from api.main import app
+                
+                with TestClient(app) as c:
+                    yield c
 
 
 @pytest.fixture
@@ -110,14 +140,3 @@ def authorized_client(client, auth_headers):
     """Test client with authentication."""
     client.headers.update(auth_headers)
     return client
-
-
-# =============================================================================
-# MCP Shared Fixtures (when available)
-# =============================================================================
-
-# MCP fixtures загружаются при необходимости
-# try:
-#     from MCP.tests.conftest import mcp_test_client, mcp_mock_httpx, mcp_captured_logs
-# except ImportError:
-#     pass

@@ -2,11 +2,12 @@
 Unit tests for services/database.py
 """
 
-import pytest
-from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
 import sys
+from datetime import datetime
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -264,8 +265,9 @@ class TestDatabaseConnectionRetry:
     @pytest.mark.asyncio
     async def test_connect_with_retry_retries_on_failure(self, mock_database):
         """Test retry on connection failure."""
-        from services.database import Database
         import asyncpg
+
+        from services.database import Database
 
         db = Database()
         mock_pool = MagicMock()
