@@ -413,13 +413,17 @@ async def main() -> None:
         drop_pending_updates=True,
         timeout=30,
     )
-    
-    # Ожидаем завершения
+
+    logger.info("Bot is running. Press Ctrl+C to stop.")
+
+    # Ожидаем завершения (бесконечное ожидание)
     try:
-        await application.updater.stop()
+        await asyncio.Event().wait()
     except KeyboardInterrupt:
         logger.info("Shutting down...")
+    finally:
         await shutdown_tracker()
+        await application.updater.stop()
         await application.stop()
         await application.shutdown()
 
