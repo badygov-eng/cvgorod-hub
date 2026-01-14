@@ -3,12 +3,33 @@ Integration tests for SQL queries with date intervals.
 Tests that parameters inside INTERVAL work correctly.
 
 Запускать с реальной БД:
-pytest tests/integration/test_sql_interval.py -v
+RUN_INTEGRATION_TESTS=1 pytest tests/integration/test_sql_interval.py -v
 """
 
+import os
 import pytest
 import asyncio
 from datetime import datetime, timedelta
+
+
+@pytest.fixture
+async def real_db():
+    """Real database connection for integration tests.
+    
+    Skip tests if database is not available.
+    """
+    if os.getenv("RUN_INTEGRATION_TESTS") != "1":
+        pytest.skip("Skipping: RUN_INTEGRATION_TESTS != 1")
+    
+    try:
+        import asyncpg
+        from config.settings import DATABASE_URL
+        
+        conn = await asyncpg.connect(DATABASE_URL)
+        yield conn
+        await conn.close()
+    except Exception as e:
+        pytest.skip(f"Database not available: {e}")
 
 
 class TestSQLIntervalParameters:

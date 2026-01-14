@@ -109,18 +109,20 @@ def mock_deepseek_response():
 def client(mock_settings, mock_database):
     """FastAPI test client with mocked dependencies."""
     with patch.dict("os.environ", mock_settings, clear=False):
-        # Patch the Database class singleton
-        with patch("services.database.Database") as MockDatabase:
-            MockDatabase.return_value = mock_database
-            
-            # Also patch the module-level db instance
-            with patch("services.database.db", mock_database):
-                # Force reimport of modules that use db
-                from fastapi.testclient import TestClient
-                from api.main import app
+        # Patch settings module to use test API key
+        with patch("config.settings.HUB_API_KEY", mock_settings["HUB_API_KEY"]):
+            # Patch the Database class singleton
+            with patch("services.database.Database") as MockDatabase:
+                MockDatabase.return_value = mock_database
                 
-                with TestClient(app) as c:
-                    yield c
+                # Also patch the module-level db instance
+                with patch("services.database.db", mock_database):
+                    # Force reimport of modules that use db
+                    from fastapi.testclient import TestClient
+                    from api.main import app
+                    
+                    with TestClient(app) as c:
+                        yield c
 
 
 @pytest.fixture

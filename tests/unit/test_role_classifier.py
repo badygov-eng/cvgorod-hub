@@ -241,7 +241,7 @@ class TestUserRoleManagement:
 
         assert len(result) == 2
         call_args = mock_conn.fetch.call_args[0][0]
-        assert "u.role = " in call_args
+        assert "ur.role_name = " in call_args  # Changed from u.role to ur.role_name (JOIN user_roles)
 
     @pytest.mark.asyncio
     async def test_get_all_managers(self, mock_database):
