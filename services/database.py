@@ -5,16 +5,17 @@ Async PostgreSQL клиент для CVGorod Message Collector.
 и удобные методы для работы с сообщениями, чатами и пользователями.
 """
 
-import os
 import logging
-from datetime import datetime
-from typing import Optional, List, Dict, Any
+import os
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, Optional
 
 import asyncpg
 from asyncpg import Pool
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+
 
 # Автоматически загружаем .env.local для локальной разработки
 def _load_env_local():
@@ -37,7 +38,7 @@ class Database:
     """Async PostgreSQL клиент с connection pooling."""
 
     _instance: Optional["Database"] = None
-    _pool: Optional[Pool] = None
+    _pool: Pool | None = None
 
     def __new__(cls) -> "Database":
         if cls._instance is None:
@@ -100,7 +101,7 @@ class Database:
 
     # ========== ПРЯМЫЕ МЕТОДЫ ЗАПРОСОВ ==========
 
-    async def fetch(self, query: str, *args) -> List[Any]:
+    async def fetch(self, query: str, *args) -> list[Any]:
         """Выполняет запрос и возвращает все строки."""
         async with self.acquire() as conn:
             return await conn.fetch(query, *args)
@@ -125,9 +126,9 @@ class Database:
     async def get_or_create_chat(
         self,
         chat_id: int,
-        chat_name: Optional[str] = None,
+        chat_name: str | None = None,
         chat_type: str = "group",
-        folder: Optional[str] = None,
+        folder: str | None = None,
     ) -> int:
         """Получает или создаёт чат. Возвращает chat_id."""
         query = """
@@ -147,8 +148,8 @@ class Database:
     async def update_chat_info(
         self,
         chat_id: int,
-        members_count: Optional[int] = None,
-        name: Optional[str] = None,
+        members_count: int | None = None,
+        name: str | None = None,
     ) -> None:
         """Обновляет информацию о чате."""
         query = """
@@ -161,14 +162,14 @@ class Database:
         async with self.acquire() as conn:
             await conn.execute(query, chat_id, members_count, name)
 
-    async def get_chat(self, chat_id: int) -> Optional[Dict[str, Any]]:
+    async def get_chat(self, chat_id: int) -> dict[str, Any] | None:
         """Возвращает информацию о чате."""
         query = "SELECT * FROM chats WHERE id = $1"
         async with self.acquire() as conn:
             row = await conn.fetchrow(query, chat_id)
         return dict(row) if row else None
 
-    async def get_all_chats(self, active_only: bool = True) -> List[Dict[str, Any]]:
+    async def get_all_chats(self, active_only: bool = True) -> list[dict[str, Any]]:
         """Возвращает список всех чатов."""
         query = "SELECT * FROM chats"
         if active_only:
@@ -179,14 +180,40 @@ class Database:
             rows = await conn.fetch(query)
         return [dict(row) for row in rows]
 
+    async def get_chat_participants(
+        self,
+        chat_id: int,
+    ) -> list[dict[str, Any]]:
+        """Возвращает участников чата с ролями."""
+        query = """
+            SELECT
+                u.id,
+                u.username,
+                u.first_name,
+                u.last_name,
+                u.role as user_role,
+                u.is_manager,
+                uc.role as chat_role,
+                uc.joined_at,
+                uc.last_activity,
+                uc.message_count
+            FROM users u
+            LEFT JOIN user_chats uc ON u.id = uc.user_id AND uc.chat_id = $1
+            WHERE uc.id IS NOT NULL
+            ORDER BY uc.last_activity DESC
+        """
+        async with self.acquire() as conn:
+            rows = await conn.fetch(query, chat_id)
+        return [dict(row) for row in rows]
+
     # ========== ПОЛЬЗОВАТЕЛИ ==========
 
     async def get_or_create_user(
         self,
         user_id: int,
-        username: Optional[str] = None,
-        first_name: Optional[str] = None,
-        last_name: Optional[str] = None,
+        username: str | None = None,
+        first_name: str | None = None,
+        last_name: str | None = None,
         is_manager: bool = False,
     ) -> int:
         """Получает или создаёт пользователя. Возвращает user_id."""
@@ -213,23 +240,147 @@ class Database:
         async with self.acquire() as conn:
             await conn.execute(query, user_id)
 
-    async def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
+    async def get_user(self, user_id: int) -> dict[str, Any] | None:
         """Возвращает информацию о пользователе."""
         query = "SELECT * FROM users WHERE id = $1"
         async with self.acquire() as conn:
             row = await conn.fetchrow(query, user_id)
         return dict(row) if row else None
 
-    async def get_all_managers(self) -> List[Dict[str, Any]]:
+    async def get_all_managers(self) -> list[dict[str, Any]]:
         """Возвращает список всех менеджеров."""
-        query = "SELECT * FROM users WHERE is_manager = TRUE ORDER BY first_seen"
+        query = """
+            SELECT u.*, COUNT(DISTINCT m.chat_id) as chats_count
+            FROM users u
+            LEFT JOIN messages m ON u.id = m.user_id
+            WHERE u.role = 'MANAGER' OR u.is_manager = TRUE
+            GROUP BY u.id
+            ORDER BY u.first_seen
+        """
         async with self.acquire() as conn:
             rows = await conn.fetch(query)
         return [dict(row) for row in rows]
 
+    async def get_users(
+        self,
+        role: str | None = None,
+        include_inactive: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Возвращает список пользователей с фильтрацией по роли."""
+        conditions = []
+        params = []
+        param_idx = 1
+
+        if role is not None:
+            conditions.append(f"u.role = ${param_idx}")
+            params.append(role)
+            param_idx += 1
+
+        if not include_inactive:
+            conditions.append("u.is_active = TRUE")
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        query = f"""
+            SELECT u.*,
+                   COUNT(DISTINCT m.chat_id) as chats_count,
+                   COUNT(m.id) as messages_count
+            FROM users u
+            LEFT JOIN messages m ON u.id = m.user_id
+            WHERE {where_clause}
+            GROUP BY u.id
+            ORDER BY u.last_seen DESC
+            LIMIT ${param_idx} OFFSET ${param_idx + 1}
+        """
+        params.extend([limit, offset])
+
+        async with self.acquire() as conn:
+            rows = await conn.fetch(query, *params)
+        return [dict(row) for row in rows]
+
+    async def get_user_statistics(
+        self,
+        user_id: int,
+        days: int = 30,
+    ) -> dict[str, Any]:
+        """Возвращает статистику пользователя."""
+        # Основная статистика
+        query = """
+            SELECT
+                u.id,
+                u.username,
+                u.first_name,
+                u.role,
+                u.is_manager,
+                COUNT(DISTINCT m.chat_id) as chats_count,
+                COUNT(m.id) as messages_count,
+                MIN(m.timestamp) as first_message,
+                MAX(m.timestamp) as last_message
+            FROM users u
+            LEFT JOIN messages m ON u.id = m.user_id
+                AND m.timestamp >= NOW() - INTERVAL '$1 days'
+            WHERE u.id = $2
+            GROUP BY u.id
+        """
+        row = await db.fetchrow(query, days, user_id)
+        
+        if not row:
+            return {}
+        
+        result = dict(row)
+        
+        # Статистика по ролям сообщений
+        role_query = """
+            SELECT
+                COALESCE(m.role, 'UNKNOWN') as role,
+                COUNT(*) as count
+            FROM messages m
+            WHERE m.user_id = $1
+                AND m.timestamp >= NOW() - INTERVAL '$2 days'
+            GROUP BY m.role
+        """
+        role_rows = await db.fetch(role_query, user_id, days)
+        result["by_role"] = [dict(r) for r in role_rows]
+        
+        # Статистика рассылок
+        mailing_query = """
+            SELECT
+                COUNT(*) as total_campaigns,
+                COALESCE(SUM(mcm.status = 'SENT'), 0) as successful,
+                COALESCE(SUM(mcm.status = 'FAILED'), 0) as failed
+            FROM mailing_campaigns mc
+            LEFT JOIN mailing_campaign_messages mcm ON mc.id = mcm.campaign_id
+            WHERE mc.sent_by_user_id = $1
+        """
+        mailing_row = await db.fetchrow(mailing_query, user_id)
+        result["mailings"] = dict(mailing_row) if mailing_row else {}
+        
+        return result
+
+    async def update_user_role(
+        self,
+        user_id: int,
+        role: str,
+    ) -> bool:
+        """Обновляет роль пользователя."""
+        valid_roles = ["CLIENT", "MANAGER", "DIRECTOR", "BOT"]
+        if role not in valid_roles:
+            raise ValueError(f"Invalid role: {role}. Must be one of {valid_roles}")
+        
+        query = """
+            UPDATE users SET role = $1, updated_at = NOW()
+            WHERE id = $2
+            RETURNING id
+        """
+        async with self.acquire() as conn:
+            result = await conn.fetchval(query, role, user_id)
+        return result is not None
+
     # ========== РОЛИ И ПАТТЕРНЫ ==========
 
-    async def get_user_role(self, user_id: int) -> Optional[Dict[str, Any]]:
+    async def get_user_role(self, user_id: int) -> dict[str, Any] | None:
         """
         Возвращает информацию о роли пользователя.
 
@@ -251,7 +402,7 @@ class Database:
             row = await conn.fetchrow(query, user_id)
         return dict(row) if row else None
 
-    async def get_all_staff_ids(self) -> List[int]:
+    async def get_all_staff_ids(self) -> list[int]:
         """
         Возвращает ID всех сотрудников (админ + директора + менеджеры).
 
@@ -268,7 +419,7 @@ class Database:
             rows = await conn.fetch(query)
         return [row["id"] for row in rows]
 
-    async def get_all_bot_ids(self) -> List[int]:
+    async def get_all_bot_ids(self) -> list[int]:
         """
         Возвращает ID всех ботов.
 
@@ -285,7 +436,7 @@ class Database:
             rows = await conn.fetch(query)
         return [row["id"] for row in rows]
 
-    async def get_all_non_client_ids(self) -> List[int]:
+    async def get_all_non_client_ids(self) -> list[int]:
         """
         Возвращает ID всех НЕ-клиентов (сотрудники + боты).
 
@@ -302,7 +453,7 @@ class Database:
             rows = await conn.fetch(query)
         return [row["id"] for row in rows]
 
-    async def get_patterns_by_type(self, pattern_type: str) -> List[Dict[str, Any]]:
+    async def get_patterns_by_type(self, pattern_type: str) -> list[dict[str, Any]]:
         """
         Возвращает паттерны сообщений по типу.
 
@@ -325,7 +476,7 @@ class Database:
             rows = await conn.fetch(query, pattern_type)
         return [dict(row) for row in rows]
 
-    async def classify_message(self, text: str, user_id: int) -> Optional[int]:
+    async def classify_message(self, text: str, user_id: int) -> int | None:
         """
         Классифицирует сообщение по тексту и роли отправителя.
 
@@ -348,8 +499,9 @@ class Database:
         user_id: int,
         text: str,
         message_type: str = "text",
-        reply_to_message_id: Optional[int] = None,
-        timestamp: Optional[datetime] = None,
+        reply_to_message_id: int | None = None,
+        timestamp: datetime | None = None,
+        role: str | None = None,
     ) -> int:
         """Сохраняет сообщение в базу данных. Возвращает id записи."""
         if timestamp is None:
@@ -357,15 +509,14 @@ class Database:
         elif timestamp.tzinfo is not None:
             # БД использует timestamp without time zone, убираем tzinfo
             # Но сначала конвертируем в UTC
-            from datetime import timezone as tz
-            timestamp = timestamp.astimezone(tz.utc).replace(tzinfo=None)
+            timestamp = timestamp.astimezone(UTC).replace(tzinfo=None)
 
         query = """
             INSERT INTO messages (
                 telegram_message_id, chat_id, user_id, text,
-                message_type, reply_to_message_id, timestamp
+                message_type, reply_to_message_id, timestamp, role
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING id
         """
         async with self.acquire() as conn:
@@ -378,23 +529,36 @@ class Database:
                 message_type,
                 reply_to_message_id,
                 timestamp,
+                role,
             )
         return result
 
     async def get_messages(
         self,
-        chat_id: Optional[int] = None,
-        user_id: Optional[int] = None,
-        since: Optional[datetime] = None,
-        until: Optional[datetime] = None,
+        chat_id: int | None = None,
+        user_id: int | None = None,
+        role: str | None = None,
+        exclude_automatic: bool = False,
+        has_intent: str | None = None,
+        clients_only: bool = False,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = 1000,
         offset: int = 0,
-        clients_only: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Возвращает список сообщений с фильтрами.
-        
+
         Args:
-            clients_only: Если True, исключает сообщения ботов и сотрудников.
+            chat_id: Фильтр по ID чата
+            user_id: Фильтр по ID пользователя
+            role: Фильтр по роли отправителя (CLIENT, MANAGER, DIRECTOR, BOT)
+            exclude_automatic: Исключить автоматические сообщения от ботов
+            has_intent: Фильтр по интенту сообщения
+            clients_only: Если True, возвращает только сообщения клиентов
+            since: Начало периода
+            until: Конец периода
+            limit: Максимум записей
+            offset: Сдвиг для пагинации
         """
         conditions = []
         params = []
@@ -408,6 +572,19 @@ class Database:
         if user_id is not None:
             conditions.append(f"m.user_id = ${param_idx}")
             params.append(user_id)
+            param_idx += 1
+
+        if role is not None:
+            conditions.append(f"m.role = ${param_idx}")
+            params.append(role)
+            param_idx += 1
+
+        if exclude_automatic:
+            conditions.append("(m.is_automatic = FALSE OR m.is_automatic IS NULL)")
+
+        if has_intent is not None:
+            conditions.append(f"m.intent = ${param_idx}")
+            params.append(has_intent)
             param_idx += 1
 
         if since is not None:
@@ -425,11 +602,10 @@ class Database:
             conditions.append(f"m.timestamp <= ${param_idx}")
             params.append(until)
             param_idx += 1
-        
+
         # Исключаем ботов и сотрудников на уровне SQL
         if clients_only:
-            from config.roles import get_all_non_client_ids
-            exclude_ids = list(get_all_non_client_ids())
+            exclude_ids = await self.get_all_non_client_ids()
             if exclude_ids:
                 placeholders = ", ".join(f"${param_idx + i}" for i in range(len(exclude_ids)))
                 conditions.append(f"m.user_id NOT IN ({placeholders})")
@@ -443,6 +619,7 @@ class Database:
                 m.*,
                 u.username,
                 u.first_name,
+                u.role as user_role,
                 c.name as chat_name
             FROM messages m
             LEFT JOIN users u ON m.user_id = u.id
@@ -460,19 +637,21 @@ class Database:
     async def search_messages(
         self,
         query: str,
-        chat_id: Optional[int] = None,
-        since: Optional[datetime] = None,
+        chat_id: int | None = None,
+        role: str | None = None,
+        since: datetime | None = None,
         limit: int = 100,
-        exclude_user_ids: Optional[List[int]] = None,
+        exclude_user_ids: list[int] | None = None,
         clients_only: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Поиск сообщений по тексту (full-text search для русского).
-        
+
         Если query пустой или '*', возвращает ВСЕ сообщения за период.
-        
+
         Args:
             query: Поисковый запрос
             chat_id: ID чата для фильтрации
+            role: Фильтр по роли отправителя
             since: Дата начала поиска
             limit: Максимум результатов
             exclude_user_ids: ID пользователей для исключения (боты, сотрудники)
@@ -482,7 +661,7 @@ class Database:
         params = []
         param_idx = 1
         use_fts = bool(query and query.strip() and query.strip() != "*")
-        
+
         if use_fts:
             # Формируем поисковую строку для tsquery
             # Используем OR (|) вместо AND (&) чтобы найти сообщения с ЛЮБЫМ из слов
@@ -495,28 +674,32 @@ class Database:
             params.append(chat_id)
             param_idx += 1
 
+        if role is not None:
+            conditions.append(f"m.role = ${param_idx}")
+            params.append(role)
+            param_idx += 1
+
         if since is not None:
             conditions.append(f"m.timestamp >= ${param_idx}")
             params.append(since)
             param_idx += 1
-        
+
         # Исключаем ботов и сотрудников НА УРОВНЕ SQL (эффективнее!)
         if clients_only:
-            from config.roles import get_all_non_client_ids
-            exclude_user_ids = list(get_all_non_client_ids())
-        
+            exclude_user_ids = await self.get_all_non_client_ids()
+
         if exclude_user_ids:
             # NOT IN для исключения ботов/сотрудников
             placeholders = ", ".join(f"${param_idx + i}" for i in range(len(exclude_user_ids)))
             conditions.append(f"m.user_id NOT IN ({placeholders})")
             params.extend(exclude_user_ids)
             param_idx += len(exclude_user_ids)
-        
+
         # Только непустые сообщения
         conditions.append("m.text IS NOT NULL AND m.text != ''")
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"
-        
+
         # Выбираем формат выборки в зависимости от использования FTS
         if use_fts:
             sql = f"""
@@ -562,8 +745,9 @@ class Database:
 
     async def get_message_count(
         self,
-        chat_id: Optional[int] = None,
-        since: Optional[datetime] = None,
+        chat_id: int | None = None,
+        since: datetime | None = None,
+        role: str | None = None,
     ) -> int:
         """Возвращает количество сообщений."""
         conditions = []
@@ -580,6 +764,11 @@ class Database:
             params.append(since)
             param_idx += 1
 
+        if role is not None:
+            conditions.append(f"role = ${param_idx}")
+            params.append(role)
+            param_idx += 1
+
         where_clause = " AND ".join(conditions) if conditions else "1=1"
 
         query = f"SELECT COUNT(*) FROM messages WHERE {where_clause}"
@@ -591,29 +780,32 @@ class Database:
         self,
         chat_id: int,
         limit: int = 500,
+        role: str | None = None,
     ) -> str:
         """
         Возвращает контекст переписки для чата в формате строки.
         Используется для передачи в DeepSeek.
         """
-        messages = await self.get_messages(chat_id=chat_id, limit=limit)
+        messages = await self.get_messages(chat_id=chat_id, limit=limit, role=role)
 
         context_lines = []
         for msg in messages:
             user_name = msg.get("username") or msg.get("first_name") or "Unknown"
+            role_indicator = f"[{msg.get('role', '?')}]" if msg.get('role') else ""
             ts = msg.get("timestamp")
             ts_str = ts.strftime("%Y-%m-%d %H:%M") if ts else ""
             text = (msg.get("text") or "")[:200]  # Ограничиваем длину
 
             if text:
-                context_lines.append(f"[{ts_str}] {user_name}: {text}")
+                context_lines.append(f"[{ts_str}] {role_indicator} {user_name}: {text}")
 
         return "\n".join(reversed(context_lines))
 
     async def get_all_context(
         self,
-        since: Optional[datetime] = None,
+        since: datetime | None = None,
         limit_per_chat: int = 50,
+        role: str | None = None,
     ) -> str:
         """
         Возвращает контекст ВСЕХ чатов для анализа.
@@ -630,20 +822,218 @@ class Database:
                 chat_id=chat_id,
                 since=since,
                 limit=limit_per_chat,
+                role=role,
             )
 
             if messages:
                 context_parts.append(f"=== {chat_name} ===")
                 for msg in messages:
                     user_name = msg.get("username") or msg.get("first_name") or "Unknown"
+                    role_indicator = f"[{msg.get('role', '?')}]" if msg.get('role') else ""
                     ts = msg.get("timestamp")
                     ts_str = ts.strftime("%m-%d %H:%M") if ts else ""
                     text = (msg.get("text") or "")[:150]
 
                     if text:
-                        context_parts.append(f"[{ts_str}] {user_name}: {text}")
+                        context_parts.append(f"[{ts_str}] {role_indicator} {user_name}: {text}")
 
         return "\n".join(context_parts)
+
+    # ========== РАССЫЛКИ ==========
+
+    async def create_mailing_campaign(
+        self,
+        name: str,
+        message_template: str,
+        sent_by_user_id: int,
+        description: str | None = None,
+    ) -> int:
+        """Создаёт кампанию рассылки. Возвращает ID кампании."""
+        query = """
+            INSERT INTO mailing_campaigns (name, message_template, sent_by_user_id, description)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id
+        """
+        async with self.acquire() as conn:
+            result = await conn.fetchval(query, name, message_template, sent_by_user_id, description)
+        return result
+
+    async def get_mailing_campaigns(
+        self,
+        status: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Возвращает список кампаний рассылок."""
+        conditions = []
+        params = []
+        param_idx = 1
+
+        if status is not None:
+            conditions.append(f"status = ${param_idx}")
+            params.append(status)
+            param_idx += 1
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        query = f"""
+            SELECT mc.*,
+                   u.username as sent_by_username,
+                   u.first_name as sent_by_first_name
+            FROM mailing_campaigns mc
+            LEFT JOIN users u ON mc.sent_by_user_id = u.id
+            WHERE {where_clause}
+            ORDER BY mc.created_at DESC
+            LIMIT ${param_idx} OFFSET ${param_idx + 1}
+        """
+        params.extend([limit, offset])
+
+        async with self.acquire() as conn:
+            rows = await conn.fetch(query, *params)
+        return [dict(row) for row in rows]
+
+    async def record_mailing_message(
+        self,
+        campaign_id: int,
+        chat_id: int,
+        message_id: int | None = None,
+        recipient_user_id: int | None = None,
+        status: str = "PENDING",
+    ) -> int:
+        """Записывает отправку сообщения рассылки."""
+        query = """
+            INSERT INTO mailing_campaign_messages (
+                campaign_id, chat_id, message_id, recipient_user_id, status
+            )
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
+        """
+        async with self.acquire() as conn:
+            result = await conn.fetchval(query, campaign_id, chat_id, message_id, recipient_user_id, status)
+        return result
+
+    # ========== АНАЛИТИКА ==========
+
+    async def get_conversation_analytics(
+        self,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Возвращает аналитику диалогов с учётом ролей."""
+        # Базовая статистика
+        base_query = """
+            SELECT
+                COUNT(*) as total_messages,
+                COUNT(DISTINCT chat_id) as total_dialogs,
+                COUNT(DISTINCT CASE WHEN role = 'CLIENT' THEN chat_id END) as client_dialogs
+            FROM messages
+            WHERE 1=1
+        """
+        params = []
+        param_idx = 1
+
+        if since is not None:
+            if since.tzinfo is not None:
+                since = since.replace(tzinfo=None)
+            base_query += f" AND timestamp >= ${param_idx}"
+            params.append(since)
+            param_idx += 1
+
+        if until is not None:
+            if until.tzinfo is not None:
+                until = until.replace(tzinfo=None)
+            base_query += f" AND timestamp <= ${param_idx}"
+            params.append(until)
+            param_idx += 1
+
+        base_row = await db.fetchrow(base_query, *params)
+        base_stats = dict(base_row) if base_row else {}
+
+        # Статистика по ролям
+        role_query = """
+            SELECT
+                COALESCE(role, 'UNKNOWN') as role,
+                COUNT(*) as count
+            FROM messages
+            WHERE 1=1
+        """
+        params2 = []
+        param_idx = 2
+
+        if since is not None:
+            role_query += f" AND timestamp >= ${param_idx}"
+            params2.append(since)
+            param_idx += 1
+
+        if until is not None:
+            role_query += f" AND timestamp <= ${param_idx}"
+            params2.append(until)
+            param_idx += 1
+
+        role_query += " GROUP BY role ORDER BY count DESC"
+
+        role_rows = await db.fetch(role_query, *params2)
+
+        # Статистика менеджеров
+        manager_query = """
+            SELECT
+                u.id as manager_id,
+                u.first_name as manager_name,
+                COUNT(DISTINCT m.chat_id) as chats_count,
+                COUNT(m.id) as messages_count
+            FROM users u
+            LEFT JOIN messages m ON u.id = m.user_id
+                AND (m.timestamp >= $1 OR $1 IS NULL)
+                AND (m.timestamp <= $2 OR $2 IS NULL)
+            WHERE u.role = 'MANAGER' OR u.is_manager = TRUE
+            GROUP BY u.id, u.first_name
+            ORDER BY messages_count DESC
+            LIMIT 10
+        """
+        manager_rows = await db.fetch(manager_query, since, until)
+
+        return {
+            "statistics": {
+                **base_stats,
+                "by_role": [dict(r) for r in role_rows]
+            },
+            "manager_performance": [dict(m) for m in manager_rows]
+        }
+
+    async def get_unanswered_questions(
+        self,
+        hours: int = 24,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Возвращает вопросы клиентов без ответов."""
+        query = """
+            SELECT
+                m.id as message_id,
+                m.chat_id,
+                c.name as chat_name,
+                m.user_id,
+                u.username,
+                u.first_name,
+                m.text as question_text,
+                m.timestamp as question_time
+            FROM messages m
+            LEFT JOIN chats c ON m.chat_id = c.id
+            LEFT JOIN users u ON m.user_id = u.id
+            WHERE m.role = 'CLIENT'
+                AND (m.text LIKE '%?%' OR LOWER(m.text) LIKE any(ARRAY['%есть ли%', '%сколько%', '%когда%', '%можно ли%', '%подскажите%']))
+                AND NOT EXISTS (
+                    SELECT 1 FROM messages m2
+                    WHERE m2.chat_id = m.chat_id
+                        AND m2.timestamp > m.timestamp
+                        AND m2.timestamp < m.timestamp + INTERVAL '$1 hours'
+                        AND m2.role = 'MANAGER'
+                )
+                AND m.timestamp > NOW() - INTERVAL '$2 hours'
+            ORDER BY m.timestamp DESC
+            LIMIT $3
+        """
+        rows = await db.fetch(query, hours, hours, limit)
+        return [dict(row) for row in rows]
 
 
 # Глобальный экземпляр
