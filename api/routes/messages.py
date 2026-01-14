@@ -260,7 +260,7 @@ async def get_message_context(
         message_id
     )
     if not msg:
-        raise HTTPException(status_code=4 4, detail="Message not found")
+        raise HTTPException(status_code=404, detail="Message not found")
     
     # Получаем соседние сообщения
     query = """
