@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CVGorod Messages Report</title>
+    <style>
+        :root {
+            --bg-dark: #0d1117;
+            --bg-card: #161b22;
+            --border: #30363d;
+            --text: #c9d1d9;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --bot-bg: #1a2332;
+            --client-bg: #1d2d1d;
+            --manager-bg: #2d1d2d;
+            --success: #3fb950;
+            --warning: #d29922;
+            --error: #f85149;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        
+        /* Auth Modal */
+        .auth-modal {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .auth-modal.hidden { display: none; }
+        .auth-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+        .auth-box h2 {
+            color: var(--accent);
+            margin-bottom: 20px;
+        }
+        .auth-box input {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        .auth-box button {
+            width: 100%;
+            padding: 12px;
+            background: var(--accent);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .auth-box button:hover { opacity: 0.9; }
+        .auth-error {
+            color: var(--error);
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        h1 { 
+            font-size: 1.8rem; 
+            font-weight: 600;
+            background: linear-gradient(135deg, #58a6ff, #a371f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .date-picker {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .date-picker label { color: var(--text-muted); }
+        .date-picker input, .date-picker select {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .date-picker input:focus, .date-picker select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        
+        /* Stats */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent);
+        }
+        .stat-number {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .stat-label { color: var(--text-muted); margin-top: 5px; font-size: 0.9rem; }
+        
+        /* Filters */
+        .filters {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 24px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .filters label { color: var(--text-muted); font-size: 14px; }
+        .filters select, .filters input[type="text"] {
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .filters input[type="text"] {
+            min-width: 200px;
+        }
+        
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* Chat groups */
+        .chat-group {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+        .chat-header {
+            background: #21262d;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .chat-header:hover { background: #282e36; }
+        .chat-name {
+            font-weight: 600;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .chat-meta { color: var(--text-muted); font-size: 0.85rem; }
+        .chat-messages { padding: 12px; display: none; }
+        .chat-messages.expanded { display: block; }
+        
+        /* Messages */
+        .message {
+            padding: 12px 16px;
+            margin: 8px 0;
+            border-radius: 12px;
+            max-width: 85%;
+        }
+        .message.bot {
+            background: var(--bot-bg);
+            border-left: 3px solid #58a6ff;
+        }
+        .message.client {
+            background: var(--client-bg);
+            border-left: 3px solid #3fb950;
+            margin-left: auto;
+        }
+        .message.manager {
+            background: var(--manager-bg);
+            border-left: 3px solid #a371f7;
+        }
+        
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .sender {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .sender.bot { color: #58a6ff; }
+        .sender.client { color: #3fb950; }
+        .sender.manager { color: #a371f7; }
+        
+        .time { color: var(--text-muted); font-size: 0.8rem; }
+        .role-badge {
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            margin-left: 8px;
+        }
+        .role-badge.bot { background: #1f3a5c; color: #58a6ff; }
+        .role-badge.client { background: #1a3d1a; color: #3fb950; }
+        .role-badge.manager { background: #3d1a3d; color: #a371f7; }
+        
+        .message-text {
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 0.95rem;
+        }
+        
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        .empty-state h3 { margin-bottom: 10px; color: var(--text); }
+        
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 30px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            border-top: 1px solid var(--border);
+            margin-top: 40px;
+        }
+        footer a { color: var(--accent); text-decoration: none; }
+        
+        /* Logout button */
+        .logout-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .logout-btn:hover {
+            border-color: var(--error);
+            color: var(--error);
+        }
+        
+        @media (max-width: 768px) {
+            .message { max-width: 95%; }
+            h1 { font-size: 1.4rem; }
+            header { flex-direction: column; align-items: flex-start; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Auth Modal -->
+    <div class="auth-modal" id="auth-modal">
+        <div class="auth-box">
+            <h2>🔐 Авторизация</h2>
+            <p style="color: var(--text-muted); margin-bottom: 20px;">Введите API ключ для доступа к отчётам</p>
+            <input type="password" id="api-key-input" placeholder="API Key">
+            <button onclick="authenticate()">Войти</button>
+            <div class="auth-error" id="auth-error"></div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <header>
+            <div class="logo">
+                <h1>📊 CVGorod Messages</h1>
+            </div>
+            <div class="date-picker">
+                <label>Дата:</label>
+                <input type="date" id="report-date" onchange="loadData()">
+                <button class="logout-btn" onclick="logout()">Выйти</button>
+            </div>
+        </header>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="total-messages">—</div>
+                <div class="stat-label">Всего сообщений</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="total-chats">—</div>
+                <div class="stat-label">Активных чатов</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="bot-messages">—</div>
+                <div class="stat-label">От бота</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="client-messages">—</div>
+                <div class="stat-label">От клиентов</div>
+            </div>
+        </div>
+        
+        <div class="filters">
+            <label>Фильтр:</label>
+            <select id="role-filter" onchange="filterMessages()">
+                <option value="all">Все сообщения</option>
+                <option value="client">Только клиенты</option>
+                <option value="assistant_bot">Только бот</option>
+            </select>
+            <input type="text" id="search" placeholder="Поиск по тексту..." oninput="filterMessages()">
+        </div>
+        
+        <div id="content">
+            <div class="loading">
+                <div class="loading-spinner"></div>
+                <p>Загрузка данных...</p>
+            </div>
+        </div>
+    </div>
+    
+    <footer>
+        CVGorod Hub &copy; 2026 | <a href="/health">API Status</a>
+    </footer>
+    
+    <script>
+        let allMessages = [];
+        let apiKey = localStorage.getItem('cvgorod_api_key');
+        
+        // Check auth on load
+        document.addEventListener('DOMContentLoaded', () => {
+            if (apiKey) {
+                document.getElementById('auth-modal').classList.add('hidden');
+                initApp();
+            }
+        });
+        
+        function authenticate() {
+            const key = document.getElementById('api-key-input').value.trim();
+            if (!key) {
+                showAuthError('Введите API ключ');
+                return;
+            }
+            
+            // Test the key
+            fetch('/api/v1/reports/messages/dates', {
+                headers: { 'X-API-Key': key }
+            })
+            .then(r => {
+                if (r.ok) {
+                    apiKey = key;
+                    localStorage.setItem('cvgorod_api_key', key);
+                    document.getElementById('auth-modal').classList.add('hidden');
+                    initApp();
+                } else {
+                    showAuthError('Неверный API ключ');
+                }
+            })
+            .catch(() => showAuthError('Ошибка подключения'));
+        }
+        
+        function showAuthError(msg) {
+            document.getElementById('auth-error').textContent = msg;
+        }
+        
+        function logout() {
+            localStorage.removeItem('cvgorod_api_key');
+            apiKey = null;
+            location.reload();
+        }
+        
+        function initApp() {
+            // Set default date to yesterday
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            document.getElementById('report-date').value = yesterday.toISOString().split('T')[0];
+            loadData();
+        }
+        
+        async function loadData() {
+            const date = document.getElementById('report-date').value;
+            if (!date) return;
+            
+            document.getElementById('content').innerHTML = `
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <p>Загрузка данных за ${date}...</p>
+                </div>
+            `;
+            
+            try {
+                const response = await fetch(`/api/v1/reports/messages/data?report_date=${date}`, {
+                    headers: { 'X-API-Key': apiKey }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch data');
+                }
+                
+                const data = await response.json();
+                allMessages = data.messages || [];
+                
+                // Update stats
+                document.getElementById('total-messages').textContent = data.stats.total;
+                document.getElementById('total-chats').textContent = data.stats.unique_chats;
+                document.getElementById('bot-messages').textContent = data.stats.bot_messages;
+                document.getElementById('client-messages').textContent = data.stats.client_messages;
+                
+                filterMessages();
+                
+            } catch (error) {
+                document.getElementById('content').innerHTML = `
+                    <div class="empty-state">
+                        <h3>❌ Ошибка загрузки</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        function filterMessages() {
+            const roleFilter = document.getElementById('role-filter').value;
+            const searchText = document.getElementById('search').value.toLowerCase();
+            
+            let filtered = allMessages;
+            
+            if (roleFilter !== 'all') {
+                filtered = filtered.filter(m => m.user_role === roleFilter);
+            }
+            
+            if (searchText) {
+                filtered = filtered.filter(m => 
+                    (m.text && m.text.toLowerCase().includes(searchText)) ||
+                    (m.first_name && m.first_name.toLowerCase().includes(searchText)) ||
+                    (m.chat_name && m.chat_name.toLowerCase().includes(searchText))
+                );
+            }
+            
+            renderMessages(filtered);
+        }
+        
+        function groupByChat(msgs) {
+            const groups = {};
+            msgs.forEach(m => {
+                if (!groups[m.chat_id]) {
+                    groups[m.chat_id] = { name: m.chat_name, messages: [] };
+                }
+                groups[m.chat_id].messages.push(m);
+            });
+            return groups;
+        }
+        
+        function getRoleClass(role) {
+            if (role === 'assistant_bot') return 'bot';
+            if (['manager', 'admin', 'director'].includes(role)) return 'manager';
+            return 'client';
+        }
+        
+        function renderMessages(msgs) {
+            if (msgs.length === 0) {
+                document.getElementById('content').innerHTML = `
+                    <div class="empty-state">
+                        <h3>📭 Нет сообщений</h3>
+                        <p>За выбранную дату сообщений не найдено</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            const groups = groupByChat(msgs);
+            let html = '';
+            
+            Object.entries(groups).forEach(([chatId, chat]) => {
+                html += `
+                    <div class="chat-group">
+                        <div class="chat-header" onclick="toggleChat(this)">
+                            <span class="chat-name">
+                                <span>💬</span>
+                                ${escapeHtml(chat.name || 'Unknown Chat')}
+                            </span>
+                            <span class="chat-meta">${chat.messages.length} сообщений</span>
+                        </div>
+                        <div class="chat-messages">
+                `;
+                
+                chat.messages.forEach(m => {
+                    const roleClass = getRoleClass(m.user_role);
+                    const senderName = (m.first_name || '') + (m.last_name ? ' ' + m.last_name : '');
+                    const username = m.username ? `@${m.username}` : '';
+                    
+                    html += `
+                        <div class="message ${roleClass}">
+                            <div class="message-header">
+                                <span class="sender ${roleClass}">
+                                    ${escapeHtml(senderName || 'Unknown')}
+                                    ${username ? `<span style="opacity:0.7">${escapeHtml(username)}</span>` : ''}
+                                    <span class="role-badge ${roleClass}">${m.user_role}</span>
+                                </span>
+                                <span class="time">${m.time}</span>
+                            </div>
+                            <div class="message-text">${escapeHtml(m.text || '[без текста]')}</div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div></div>';
+            });
+            
+            document.getElementById('content').innerHTML = html;
+            
+            // Expand first chat by default
+            const firstChat = document.querySelector('.chat-messages');
+            if (firstChat) firstChat.classList.add('expanded');
+        }
+        
+        function toggleChat(header) {
+            const messages = header.nextElementSibling;
+            messages.classList.toggle('expanded');
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Handle Enter key in auth modal
+        document.getElementById('api-key-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') authenticate();
+        });
+    </script>
+</body>
+</html>

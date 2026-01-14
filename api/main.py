@@ -11,7 +11,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import clients, intents, messages, send
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+
+from api.routes import clients, intents, messages, reports, send
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -90,6 +93,18 @@ app.include_router(messages, prefix="/api/v1")
 app.include_router(clients, prefix="/api/v1")
 app.include_router(intents, prefix="/api/v1")
 app.include_router(send, prefix="/api/v1")
+app.include_router(reports, prefix="/api/v1")
+
+
+# Public reports page (no auth required)
+@app.get("/reports/messages", response_class=HTMLResponse)
+async def messages_report_page():
+    """Страница отчёта по сообщениям."""
+    from pathlib import Path
+    html_path = Path(__file__).parent.parent / "static" / "reports" / "messages.html"
+    if html_path.exists():
+        return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h1>Report not found</h1>", status_code=404)
 
 
 def run():

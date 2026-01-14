@@ -12,13 +12,14 @@ services:
       - SECRETS_PATH=/root/.secrets
       - HUB_API_HOST=0.0.0.0
       - HUB_API_PORT=8000
-      - DATABASE_URL=${DATABASE_URL:-postgresql://cvgorod:${POSTGRES_PASSWORD:-changeme}@postgres:5432/cvgorod_hub}
+      - DATABASE_URL=postgresql://cvgorod:cvgorod_secret_2024@postgres:5432/cvgorod_hub
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
     volumes:
       - ./api:/app/api:ro
       - ./bot:/app/bot:ro
       - ./services:/app/services:ro
       - ./config:/app/config:ro
+      - ./static:/app/static:ro
       - ./data:/app/data
       - ./logs:/app/logs
       - ${HOME}/.secrets:/root/.secrets:ro
@@ -49,7 +50,7 @@ services:
       - ENVIRONMENT=production
       - SECRETS_PATH=/root/.secrets
       - TELEGRAM_BOT_TOKEN
-      - DATABASE_URL=${DATABASE_URL:-postgresql://cvgorod:${POSTGRES_PASSWORD:-changeme}@postgres:5432/cvgorod_hub}
+      - DATABASE_URL=postgresql://cvgorod:cvgorod_secret_2024@postgres:5432/cvgorod_hub
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
     volumes:
       - ./bot:/app/bot:ro
