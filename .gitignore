@@ -38,3 +38,4 @@ backups/
 .secrets/
 *.env
 !.env.example
+.playwright-mcp/
