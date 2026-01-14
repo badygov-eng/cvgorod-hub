@@ -9,7 +9,7 @@
 - client: Клиент (по умолчанию)
 """
 
-from typing import Dict, Set, Optional, List
+from typing import Set, Optional, List
 from dataclasses import dataclass
 from enum import Enum
 
@@ -216,7 +216,6 @@ def should_forward_to_admin(user_id: int) -> bool:
 # с fallback на статический конфиг если БД недоступна.
 
 import logging
-from typing import AsyncGenerator
 
 logger = logging.getLogger(__name__)
 

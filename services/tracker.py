@@ -14,9 +14,7 @@ cvgorod-hub Tracker Integration - Автоматическое логирова�
 import os
 import sys
 from pathlib import Path
-from datetime import datetime
-from typing import Optional, Dict, Any
-from dataclasses import dataclass
+from typing import Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)

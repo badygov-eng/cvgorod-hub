@@ -8,7 +8,6 @@ from typing import Optional
 from telegram import Bot
 from telegram.error import TelegramError
 
-from config import settings
 from services.database import db
 from bot.sender import MessageSender
 

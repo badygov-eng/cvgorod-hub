@@ -10,7 +10,6 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from api.auth import verify_api_key
-from config import settings, ADMIN_IDS
 from services.database import db
 
 logger = logging.getLogger(__name__)
@@ -169,7 +168,7 @@ async def reject_response(
     api_key: str = Depends(verify_api_key),
 ):
     """Отклонение отправки сообщения."""
-    result = await db.execute(
+    await db.execute(
         """
         UPDATE pending_responses
         SET status = 'rejected'

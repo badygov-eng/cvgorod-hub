@@ -2,8 +2,6 @@
 API endpoint tests for cvgorod-hub.
 """
 
-import pytest
-from fastapi.testclient import TestClient
 
 
 class TestHealth:

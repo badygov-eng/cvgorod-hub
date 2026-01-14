@@ -29,20 +29,20 @@ def event_loop():
 
 @pytest.fixture
 def mock_settings():
-    """Mock settings for testing."""
+    """Mock settings for testing (все значения должны быть строками для os.environ)."""
     return {
         "HUB_API_KEY": "test-api-key-12345",
         "HUB_API_HOST": "127.0.0.1",
-        "HUB_API_PORT": 8000,
+        "HUB_API_PORT": "8000",
         "TELEGRAM_BOT_TOKEN": "test-telegram-token",
         "DATABASE_URL": "postgresql://localhost/cvgorod_hub_test",
         "REDIS_URL": "redis://localhost:6379",
         "DEEPSEEK_API_KEY": "test-deepseek-key",
         "DEEPSEEK_MODEL": "deepseek-chat",
-        "INTENT_CLASSIFIER_BATCH_TIMEOUT": 5.0,
-        "INTENT_CLASSIFIER_BATCH_SIZE": 10,
-        "SANDBOX_ENABLED": True,
-        "ADMIN_IDS": [123456789],
+        "INTENT_CLASSIFIER_BATCH_TIMEOUT": "5.0",
+        "INTENT_CLASSIFIER_BATCH_SIZE": "10",
+        "SANDBOX_ENABLED": "true",
+        "ADMIN_IDS": "123456789",
     }
 
 
@@ -116,18 +116,8 @@ def authorized_client(client, auth_headers):
 # MCP Shared Fixtures (when available)
 # =============================================================================
 
-try:
-    from MCP.tests.conftest import (
-        mcp_test_client,
-        mcp_mock_httpx,
-        mcp_captured_logs,
-    )
-
-    @pytest.fixture
-    def mcp_client(mcp_test_client):
-        """MCP test client fixture."""
-        return mcp_test_client
-
-except ImportError:
-    """MCP fixtures not available - using local fixtures."""
-    pass
+# MCP fixtures загружаются при необходимости
+# try:
+#     from MCP.tests.conftest import mcp_test_client, mcp_mock_httpx, mcp_captured_logs
+# except ImportError:
+#     pass

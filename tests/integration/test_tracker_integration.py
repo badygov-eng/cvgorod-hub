@@ -58,16 +58,16 @@ def test_tracker_import():
     print("=" * 60)
     
     try:
-        from MCP.shared.tracker_events import TrackerEvents, PROJECT_QUEUES
+        from MCP.shared.tracker_events import PROJECT_QUEUES
         
-        print(f"  [OK] TrackerEvents imported successfully")
+        print("  [OK] TrackerEvents imported successfully")
         print(f"  [OK] PROJECT_QUEUES has {len(PROJECT_QUEUES)} mappings")
         
         # Check cvgorod-hub mapping
         if "cvgorod" in PROJECT_QUEUES:
             print(f"  [OK] cvgorod maps to queue: {PROJECT_QUEUES['cvgorod']}")
         else:
-            print(f"  [WARN] cvgorod not in PROJECT_QUEUES, using default")
+            print("  [WARN] cvgorod not in PROJECT_QUEUES, using default")
         
         return True
     except Exception as e:
@@ -123,7 +123,7 @@ async def test_tracker_api():
             
             if response.status_code == 200:
                 data = response.json()
-                print(f"  [OK] API connected successfully")
+                print("  [OK] API connected successfully")
                 print(f"  [OK] User: {data.get('display', 'Unknown')}")
                 print(f"  [OK] Organization: {tracker.org_id}")
                 return True
@@ -156,7 +156,7 @@ async def test_perplexity_api():
             # Simple search test
             result = await pplx.search("тест сообщение")
             
-            print(f"  [OK] API connected successfully")
+            print("  [OK] API connected successfully")
             print(f"  [OK] Model: {result.model}")
             print(f"  [OK] Answer length: {len(result.answer)} chars")
             print(f"  [OK] Sources: {len(result.sources)}")
@@ -175,7 +175,7 @@ async def test_tracker_events():
     print("=" * 60)
     
     try:
-        from services.tracker import tracker, log_telegram_message
+        from services.tracker import tracker
         
         # Test info event (creates comment if issue exists, logs locally)
         print("  [INFO] Testing info event...")
@@ -188,7 +188,7 @@ async def test_tracker_events():
             },
         )
         
-        print(f"  [OK] Info event created")
+        print("  [OK] Info event created")
         print(f"  [OK] Issue key: {result.get('issue_key', 'N/A')}")
         
         return True

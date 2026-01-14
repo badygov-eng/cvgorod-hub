@@ -8,7 +8,6 @@ from typing import Optional
 from telegram import Bot
 from telegram.error import TelegramError
 
-from config import settings
 
 logger = logging.getLogger(__name__)
 

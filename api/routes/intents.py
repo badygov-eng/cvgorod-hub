@@ -3,8 +3,6 @@ Intents API routes — статистика и аналитика по инте�
 """
 
 import logging
-from datetime import datetime, timedelta
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel

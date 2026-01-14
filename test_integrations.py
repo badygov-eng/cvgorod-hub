@@ -73,15 +73,15 @@ def test_shared_modules():
     print("\n[2] Shared Modules Import")
     
     try:
-        from shared.tracker_events import TrackerEvents, PROJECT_QUEUES
-        print(f"  [OK] TrackerEvents imported")
+        from shared.tracker_events import PROJECT_QUEUES
+        print("  [OK] TrackerEvents imported")
         print(f"  [OK] PROJECT_QUEUES: {len(PROJECT_QUEUES)} entries")
         
         # Check cvgorod mapping
         if "cvgorod" in PROJECT_QUEUES:
             print(f"  [OK] cvgorod -> {PROJECT_QUEUES['cvgorod']}")
         else:
-            print(f"  [INFO] cvgorod uses default queue")
+            print("  [INFO] cvgorod uses default queue")
         
         return True
     except Exception as e:
@@ -144,7 +144,7 @@ async def test_tracker_api():
             
             if response.status_code == 200:
                 data = response.json()
-                print(f"  [OK] API connected")
+                print("  [OK] API connected")
                 print(f"  [OK] User: {data.get('display', 'Unknown')}")
                 return True
             else:
@@ -184,7 +184,7 @@ async def test_tracker_events():
             has_intent=True,
             intent_type="order",
         )
-        print(f"  [OK] log_telegram_message works")
+        print("  [OK] log_telegram_message works")
         
         # Test log_database_operation helper
         await log_database_operation(
@@ -193,7 +193,7 @@ async def test_tracker_events():
             success=True,
             duration_ms=42,
         )
-        print(f"  [OK] log_database_operation works")
+        print("  [OK] log_database_operation works")
         
         return True
                 
@@ -218,7 +218,7 @@ async def test_perplexity():
         async with PerplexityClient() as pplx:
             result = await pplx.search("цветы тюльпаны цена")
             
-            print(f"  [OK] API connected")
+            print("  [OK] API connected")
             print(f"  [OK] Model: {result.model}")
             print(f"  [OK] Sources: {len(result.sources)}")
             

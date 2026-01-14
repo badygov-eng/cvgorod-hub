@@ -77,7 +77,7 @@ class RoleRepository:
         Используется как fallback если БД недоступна.
         """
         from config.roles import (
-            ADMIN, DIRECTORS, MANAGERS, BOTS, get_all_staff_ids, get_all_bot_ids
+            ADMIN, DIRECTORS, MANAGERS, BOTS
         )
 
         # Админ

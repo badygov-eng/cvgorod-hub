@@ -10,10 +10,10 @@ Intent Classifier — LLM обработка сообщений для клас�
 
 import json
 import logging
+import os
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -24,6 +24,10 @@ if mcp_path.exists() and str(mcp_path) not in sys.path:
     sys.path.insert(0, str(mcp_path))
 
 from config import settings
+from services.database import db
+
+# httpx нужен для тестов и fallback
+import httpx
 
 # Try to use MCP DeepSeekClient, fallback to direct implementation
 try:
@@ -31,7 +35,6 @@ try:
     USE_MCP_CLIENT = True
 except ImportError:
     USE_MCP_CLIENT = False
-    import httpx
 
 logger = logging.getLogger(__name__)
 

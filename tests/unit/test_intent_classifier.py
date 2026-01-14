@@ -187,10 +187,12 @@ class TestIntentClassifier:
 
             await classifier.classify(message_id=1, text=long_text)
 
-            # Verify text was truncated to 500 chars
+            # Verify text was truncated to 500 chars in the prompt
             call_args = mock_client_instance.post.call_args
             user_content = call_args[1]["json"]["messages"][1]["content"]
-            assert len(user_content) <= 500
+            # Проверяем что в промпте текст урезан (500 'A' вместо 1000)
+            assert "A" * 500 in user_content  # Урезанный текст присутствует
+            assert "A" * 501 not in user_content  # Полный текст НЕ присутствует
 
 
 class TestMessageAnalysis:

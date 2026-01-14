@@ -11,7 +11,6 @@ Message Collector Service для CVGorod.
 """
 
 import logging
-import re
 from datetime import datetime
 from typing import Optional, Dict, Any, Set
 
@@ -19,11 +18,10 @@ from telegram import Update
 from telegram.ext import Application, ContextTypes
 
 from services.database import db
-from services.role_repository import role_repository, get_user_role, is_staff
+from services.role_repository import role_repository, is_staff
 from services.yandex_stt import get_stt
 from config.roles import (
-    MANAGER_IDS, BOT_IDS, MANAGER_NAMES,
-    UserRole
+    MANAGER_IDS, MANAGER_NAMES
 )
 
 logger = logging.getLogger(__name__)
@@ -64,7 +62,7 @@ class MessageCollector:
         """
         try:
             # ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ
-            logger.info(f"=== HANDLE_UPDATE CALLED ===")
+            logger.info("=== HANDLE_UPDATE CALLED ===")
             if update.message:
                 chat_title = update.message.chat.title if update.message.chat else "N/A"
                 chat_id = update.message.chat_id
