@@ -14,44 +14,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
-class TestPriorityClass:
-    """Tests for Priority class (fallback when MCP is not available)."""
-
-    def test_priority_has_all_levels(self):
-        """Priority should have LOW, NORMAL, HIGH levels."""
-        from services.tracker import Priority
-
-        assert hasattr(Priority, "LOW")
-        assert hasattr(Priority, "NORMAL")
-        assert hasattr(Priority, "HIGH")
-
-    def test_priority_values(self):
-        """Priority values should be lowercase strings."""
-        from services.tracker import Priority
-
-        assert Priority.LOW == "low"
-        assert Priority.NORMAL == "normal"
-        assert Priority.HIGH == "high"
-
-    def test_priority_string_comparison(self):
-        """Priority values should support string comparison."""
-        from services.tracker import Priority
-
-        # Values are strings, so they should compare correctly
-        assert Priority.LOW == "low"
-        assert Priority.HIGH == "high"
-        assert Priority.NORMAL == "normal"
-
-    def test_priority_in_tracker_error_calls(self):
-        """Priority values should be usable in tracker.error() calls."""
-        from services.tracker import Priority
-
-        # Verify that Priority values are valid strings for the tracker
-        assert isinstance(Priority.LOW, str)
-        assert isinstance(Priority.NORMAL, str)
-        assert isinstance(Priority.HIGH, str)
-
-
 class TestDummyTracker:
     """Tests for DummyTracker class."""
 

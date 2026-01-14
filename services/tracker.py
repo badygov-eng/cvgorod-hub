@@ -15,22 +15,9 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any
-
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
-
-
-# ========================================
-# PRIORITY ENUM (fallback when MCP is not available)
-# ========================================
-
-class Priority:
-    """Priority levels for tracker events (fallback when MCP is not available)."""
-    LOW = "low"
-    NORMAL = "normal"
-    HIGH = "high"
 
 
 # Add paths to find MCP shared modules
@@ -104,7 +91,7 @@ PROJECT_NAME = "cvgorod-hub"
 COMPONENT_NAME = "Hub"  # Компонент в очереди TGBOTCG
 
 # Initialize tracker (real or dummy based on availability)
-if _TRACKER_AVAILABLE:
+if _TRACKER_AVAILABLE and TrackerEvents is not None:
     tracker = TrackerEvents(
         project=PROJECT_NAME,
         component=COMPONENT_NAME,
@@ -154,7 +141,7 @@ async def log_api_error(
     context: Optional[dict[str, Any]] = None,
 ) -> None:
     """Логирует ошибку API."""
-    priority = Priority.HIGH if status_code and status_code >= 500 else Priority.NORMAL
+    priority = "high" if status_code and status_code >= 500 else "normal"
     await tracker.error(
         summary=f"API Error: {endpoint}",
         data={
@@ -163,7 +150,7 @@ async def log_api_error(
             "endpoint": endpoint,
             **(context or {}),
         },
-        priority=priority,
+        priority=priority,  # type: ignore[arg-type]
     )
 
 
@@ -240,7 +227,7 @@ async def log_database_operation(
                 "duration_ms": duration_ms,
                 "error": error,
             },
-            priority=Priority.HIGH,
+            priority="high",  # type: ignore[arg-type]
         )
     else:
         await tracker.info(
@@ -278,7 +265,7 @@ async def log_deploy(
                 "success": False,
                 "error": error,
             },
-            priority=Priority.HIGH,
+            priority="high",  # type: ignore[arg-type]
         )
 
 
