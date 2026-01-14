@@ -978,17 +978,17 @@ class Database:
             WHERE 1=1
         """
         params2 = []
-        param_idx = 2
+        param_idx2 = 1
 
         if since is not None:
-            role_query += f" AND timestamp >= ${param_idx}"
+            role_query += f" AND timestamp >= ${param_idx2}"
             params2.append(since)
-            param_idx += 1
+            param_idx2 += 1
 
         if until is not None:
-            role_query += f" AND timestamp <= ${param_idx}"
+            role_query += f" AND timestamp <= ${param_idx2}"
             params2.append(until)
-            param_idx += 1
+            param_idx2 += 1
 
         role_query += " GROUP BY role ORDER BY count DESC"
 
