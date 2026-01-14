@@ -144,7 +144,7 @@ echo ""
 echo -e "${YELLOW}Step 6: Running tests...${NC}"
 
 cd "$PROJECT_DIR"
-python -m pytest tests/ -v --tb=short 2>&1 | tee "logs/tests_output_$(date +%Y%m%d_%H%M%S).log"
+python3 -m pytest tests/ -v --tb=short 2>&1 | tee "logs/tests_output_$(date +%Y%m%d_%H%M%S).log"
 
 echo -e "${GREEN}Tests completed!${NC}"
 echo ""

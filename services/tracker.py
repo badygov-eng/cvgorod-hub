@@ -11,13 +11,27 @@ cvgorod-hub Tracker Integration - Автоматическое логирова�
     await tracker.info("Описание события", {"data": {...}})
 """
 
+import logging
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Any
-import logging
+from typing import Any
+
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+
+
+# ========================================
+# PRIORITY ENUM (fallback when MCP is not available)
+# ========================================
+
+class Priority:
+    """Priority levels for tracker events (fallback when MCP is not available)."""
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+
 
 # Add paths to find MCP shared modules
 _project_root = Path(__file__).resolve().parent.parent
@@ -31,11 +45,11 @@ for p in [_project_root, _mcp_path]:
 # Try to import shared tracker events module, fallback to local implementation
 _TRACKER_AVAILABLE = False
 try:
-    from shared.tracker_events import TrackerEvents, Priority
+    from shared.tracker_events import TrackerEvents
     _TRACKER_AVAILABLE = True
 except ImportError:
     logger.warning("MCP shared tracker not available, using local implementation")
-    Priority = None  # Define placeholder
+    TrackerEvents = None  # Define placeholder
 
 
 # ========================================
@@ -50,17 +64,36 @@ class DummyTracker:
         self.component = component
         self.enabled = enabled
 
-    async def info(self, summary: str, data: Dict[str, Any] = None):
+    async def info(
+        self,
+        summary: str,
+        data: Optional[dict[str, Any]] = None,
+        priority: Optional[str] = None,
+    ):
         if self.enabled:
-            logger.info(f"[Tracker] INFO: {summary}")
+            logger.info(f"[Tracker] INFO [{priority or 'normal'}]: {summary}")
 
-    async def error(self, summary: str, data: Dict[str, Any] = None):
+    async def error(
+        self,
+        summary: str,
+        data: Optional[dict[str, Any]] = None,
+        priority: Optional[str] = None,
+    ):
         if self.enabled:
-            logger.error(f"[Tracker] ERROR: {summary}")
+            logger.error(f"[Tracker] ERROR [{priority or 'high'}]: {summary}")
 
-    async def warning(self, summary: str, data: Dict[str, Any] = None):
+    async def warning(
+        self,
+        summary: str,
+        data: Optional[dict[str, Any]] = None,
+        priority: Optional[str] = None,
+    ):
         if self.enabled:
-            logger.warning(f"[Tracker] WARNING: {summary}")
+            logger.warning(f"[Tracker] WARNING [{priority or 'normal'}]: {summary}")
+
+    async def deploy(self, summary: str, data: Optional[dict[str, Any]] = None):
+        if self.enabled:
+            logger.info(f"[Tracker] DEPLOY: {summary}")
 
 
 # ========================================
@@ -78,6 +111,11 @@ if _TRACKER_AVAILABLE:
         enabled=os.getenv("TRACKER_ENABLED", "true").lower() == "true",
     )
 else:
+    if os.getenv("TRACKER_ENABLED", "true").lower() == "true":
+        logger.warning(
+            "[Tracker] MCP shared tracker not available, using DummyTracker. "
+            "Tracker events will be logged locally only."
+        )
     tracker = DummyTracker(
         project=PROJECT_NAME,
         component=COMPONENT_NAME,
@@ -112,10 +150,11 @@ async def log_shutdown(reason: str = "normal") -> None:
 async def log_api_error(
     endpoint: str,
     error: str,
-    status_code: int = None,
-    context: dict = None,
+    status_code: Optional[int] = None,
+    context: Optional[dict[str, Any]] = None,
 ) -> None:
     """Логирует ошибку API."""
+    priority = Priority.HIGH if status_code and status_code >= 500 else Priority.NORMAL
     await tracker.error(
         summary=f"API Error: {endpoint}",
         data={
@@ -124,7 +163,7 @@ async def log_api_error(
             "endpoint": endpoint,
             **(context or {}),
         },
-        priority=Priority.HIGH if status_code and status_code >= 500 else Priority.NORMAL,
+        priority=priority,
     )
 
 
@@ -132,7 +171,7 @@ async def log_telegram_message(
     chat_id: int,
     message_type: str,
     has_intent: bool = True,
-    intent_type: str = None,
+    intent_type: Optional[str] = None,
 ) -> None:
     """Логирует обработку сообщения из Telegram."""
     await tracker.info(
@@ -169,8 +208,8 @@ async def log_intent_classification(
 async def log_sandbox_action(
     action: str,
     pending_id: int,
-    user_id: int = None,
-    approved: bool = None,
+    user_id: Optional[int] = None,
+    approved: Optional[bool] = None,
 ) -> None:
     """Логирует действие с песочницей."""
     await tracker.info(
@@ -188,8 +227,8 @@ async def log_database_operation(
     operation: str,
     table: str,
     success: bool = True,
-    duration_ms: int = None,
-    error: str = None,
+    duration_ms: Optional[int] = None,
+    error: Optional[str] = None,
 ) -> None:
     """Логирует операцию с базой данных."""
     if not success:
@@ -218,7 +257,7 @@ async def log_deploy(
     version: str,
     environment: str,
     success: bool = True,
-    error: str = None,
+    error: Optional[str] = None,
 ) -> None:
     """Логирует деплой."""
     if success:

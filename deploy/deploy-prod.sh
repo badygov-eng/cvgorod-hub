@@ -101,7 +101,7 @@ fi
 # =============================================================================
 
 echo_step "Running tests..."
-if python -m pytest tests/ -v --tb=short 2>&1 | tee /tmp/test_output.txt; then
+if python3 -m pytest tests/ -v --tb=short 2>&1 | tee /tmp/test_output.txt; then
     echo -e "${GREEN}[OK]${NC} All tests passed"
 else
     echo_error "Tests failed!"
