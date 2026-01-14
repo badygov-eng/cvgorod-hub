@@ -56,7 +56,8 @@ async def analyze(text):
         return "neutral"
 
 async def main():
-    pool = await asyncpg.create_pool("postgresql://cvgorod:cvgorod_secret_2024@postgres:5432/cvgorod_hub", min_size=2, max_size=5)
+    database_url = os.getenv("DATABASE_URL", "postgresql://cvgorod@localhost:5433/cvgorod_hub")
+    pool = await asyncpg.create_pool(database_url, min_size=2, max_size=5)
     msgs = await get_messages(pool)
     print(f"Found {len(msgs)} messages", file=sys.stderr)
 

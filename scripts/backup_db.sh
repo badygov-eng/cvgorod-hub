@@ -37,8 +37,12 @@ if [ -n "$CONTAINER" ]; then
         pg_dump -U "$DB_USER" -d "$DB_NAME" --no-owner --no-acl \
         > "$BACKUP_FILE"
 else
-    # Локальный бэкап
-    PGPASSWORD="${PGPASSWORD:-cvgorod_secret_2024}" pg_dump \
+    # Локальный бэкап (PGPASSWORD должен быть установлен!)
+    if [ -z "$PGPASSWORD" ]; then
+        echo "ERROR: PGPASSWORD не установлен. Установите: export PGPASSWORD=<password>"
+        exit 1
+    fi
+    PGPASSWORD="$PGPASSWORD" pg_dump \
         -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
         --no-owner --no-acl \
         > "$BACKUP_FILE"

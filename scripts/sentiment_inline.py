@@ -116,8 +116,8 @@ async def main():
     date_str = sys.argv[1] if len(sys.argv) > 1 else "2026-01-12"
     date = datetime.strptime(date_str, "%Y-%m-%d")
 
-    # Подключение к БД (Docker network)
-    database_url = "postgresql://cvgorod:cvgorod_secret_2024@postgres:5432/cvgorod_hub"
+    # Подключение к БД
+    database_url = os.getenv("DATABASE_URL", "postgresql://cvgorod@localhost:5433/cvgorod_hub")
     pool = await asyncpg.create_pool(database_url, min_size=2, max_size=5)
 
     try:

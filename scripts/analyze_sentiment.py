@@ -216,7 +216,7 @@ async def process_day(
     }
 
     # Подключение к БД
-    database_url = "postgresql://cvgorod:cvgorod_secret_2024@postgres:5432/cvgorod_hub"
+    database_url = os.getenv("DATABASE_URL", "postgresql://cvgorod@localhost:5433/cvgorod_hub")
     pool = await asyncpg.create_pool(
         database_url,
         min_size=2,
@@ -333,7 +333,7 @@ async def main():
     logger.info("=" * 60)
 
     # Проверяем, есть ли сообщения за этот день
-    database_url = "postgresql://cvgorod:cvgorod_secret_2024@postgres:5432/cvgorod_hub"
+    database_url = os.getenv("DATABASE_URL", "postgresql://cvgorod@localhost:5433/cvgorod_hub")
     pool = await asyncpg.create_pool(database_url, min_size=1, max_size=2)
 
     date_start = date.replace(hour=0, minute=0, second=0)

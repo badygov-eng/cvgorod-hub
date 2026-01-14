@@ -76,12 +76,16 @@ if [ -n "$CONTAINER" ]; then
     cat "$RESTORE_FILE" | docker compose -f "${PROJECT_DIR}/docker-compose.yml" exec -T postgres \
         psql -U "$DB_USER" -d "$DB_NAME"
 else
-    # Локальный restore
-    PGPASSWORD="${PGPASSWORD:-cvgorod_secret_2024}" psql \
+    # Локальный restore (PGPASSWORD должен быть установлен!)
+    if [ -z "$PGPASSWORD" ]; then
+        echo "ERROR: PGPASSWORD не установлен. Установите: export PGPASSWORD=<password>"
+        exit 1
+    fi
+    PGPASSWORD="$PGPASSWORD" psql \
         -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
         -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
     
-    PGPASSWORD="${PGPASSWORD:-cvgorod_secret_2024}" psql \
+    PGPASSWORD="$PGPASSWORD" psql \
         -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
         < "$RESTORE_FILE"
 fi
