@@ -84,7 +84,6 @@ class TestSQLIntervalParameters:
         assert result >= 1, "Should find message within 24 hours"
     
     @pytest.mark.asyncio
-    @pytest.mark.asyncio
     async def test_unanswered_questions_query(self, real_db):
         """Test get_unanswered_questions query with interval parameters."""
         # Это тестирует реальный запрос из database.py
