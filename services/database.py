@@ -320,7 +320,7 @@ class Database:
                 MAX(m.timestamp) as last_message
             FROM users u
             LEFT JOIN messages m ON u.id = m.user_id
-                AND m.timestamp >= NOW() - INTERVAL '$1 days'
+                AND m.timestamp >= NOW() - ($1 || ' days')::interval
             WHERE u.id = $2
             GROUP BY u.id
         """
@@ -338,7 +338,7 @@ class Database:
                 COUNT(*) as count
             FROM messages m
             WHERE m.user_id = $1
-                AND m.timestamp >= NOW() - INTERVAL '$2 days'
+                AND m.timestamp >= NOW() - ($2 || ' days')::interval
             GROUP BY m.role
         """
         role_rows = await db.fetch(role_query, user_id, days)
@@ -1025,10 +1025,10 @@ class Database:
                     SELECT 1 FROM messages m2
                     WHERE m2.chat_id = m.chat_id
                         AND m2.timestamp > m.timestamp
-                        AND m2.timestamp < m.timestamp + INTERVAL '$1 hours'
+                        AND m2.timestamp < m.timestamp + ($1 || ' hours')::interval
                         AND m2.role = 'MANAGER'
                 )
-                AND m.timestamp > NOW() - INTERVAL '$2 hours'
+                AND m.timestamp > NOW() - ($2 || ' hours')::interval
             ORDER BY m.timestamp DESC
             LIMIT $3
         """
