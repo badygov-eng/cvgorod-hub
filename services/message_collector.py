@@ -63,12 +63,25 @@ class MessageCollector:
         где бот имеет доступ (Group Privacy = OFF).
         """
         try:
+            # ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ
+            logger.info(f"=== HANDLE_UPDATE CALLED ===")
+            if update.message:
+                chat_title = update.message.chat.title if update.message.chat else "N/A"
+                chat_id = update.message.chat_id
+                user_name = update.message.from_user.first_name if update.message.from_user else "N/A"
+                text_preview = (update.message.text or "")[:50] if update.message.text else "[no text]"
+                logger.info(f"Chat: {chat_title} ({chat_id}), User: {user_name}, Text: {text_preview}")
+            else:
+                logger.info(f"Update without message: {update}")
+            
             # Игнорируем сообщения от ботов
             if update.message and update.message.from_user and update.message.from_user.is_bot:
+                logger.info("Skipping: message from bot")
                 return
 
             # Пропускаем системные сообщения
             if not update.message or not update.message.text:
+                logger.info("Skipping: no message or no text")
                 return
 
             message_id = update.message.message_id
@@ -140,7 +153,7 @@ class MessageCollector:
             "text": text,
             "message_type": self._get_message_type(msg),
             "reply_to_message_id": msg.reply_to_message.message_id if msg.reply_to_message else None,
-            "timestamp": msg.date,
+            "timestamp": msg.date.replace(tzinfo=None) if msg.date else datetime.utcnow(),
             "role_id": user_role.id,
             "is_staff": user_role.is_staff,
             "is_bot": user_role.is_bot,
