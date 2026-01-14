@@ -135,7 +135,7 @@ ssh -i "$SSH_KEY" badygovdaniil@$SERVER "
     # Wait for service to be healthy
     echo 'Waiting for service to start...'
     for i in {1..30}; do
-        if curl -sf http://127.0.0.1:8000/health > /dev/null 2>&1; then
+        if curl -sf http://127.0.0.1:8300/health > /dev/null 2>&1; then
             echo 'Service is healthy!'
             exit 0
         fi
@@ -178,7 +178,7 @@ else
 fi
 
 # Check health endpoint
-HEALTH=$(ssh -i "$SSH_KEY" badygovdaniil@$SERVER "curl -sf http://127.0.0.1:8000/health 2>/dev/null" || echo "{}")
+HEALTH=$(ssh -i "$SSH_KEY" badygovdaniil@$SERVER "curl -sf http://127.0.0.1:8300/health 2>/dev/null" || echo "{}")
 if echo "$HEALTH" | grep -q '"status": "ok"'; then
     echo -e "${GREEN}[OK]${NC} Health check passed"
 else

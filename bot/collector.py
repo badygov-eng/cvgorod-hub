@@ -11,30 +11,31 @@ Message Collector Service для CVGorod.
 - Интеграция с Yandex Tracker для логирования событий
 """
 
+import contextlib
 import logging
 from datetime import datetime
-from typing import Optional, Dict, Any, Set
+from typing import Any
 
 from telegram import Update
 from telegram.ext import Application, ContextTypes
 
 from services.database import db
-from services.role_repository import role_repository, is_staff
+from services.message_collector import (
+    message_collector,  # Импортируем глобальный экземпляр, как в старом проекте
+)
+from services.role_repository import is_staff, role_repository
 from services.yandex_stt import get_stt
-from services.message_collector import message_collector  # Импортируем глобальный экземпляр, как в старом проекте
 
 # Safe tracker import (with fallback)
 try:
-    from services.tracker import tracker, log_telegram_message, log_database_operation
+    from services.tracker import log_database_operation, log_telegram_message, tracker
 except ImportError:
     tracker = None
     async def log_telegram_message(chat_id, message_type, has_intent):
         pass
     async def log_database_operation(operation, table, success, duration_ms, error=None):
         pass
-from config.roles import (
-    MANAGER_IDS, MANAGER_NAMES
-)
+from config.roles import MANAGER_IDS, MANAGER_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +55,9 @@ class MessageCollector:
     """
 
     def __init__(self):
-        self._known_managers: Set[int] = set()
-        self._processed_message_ids: Set[int] = set()
-        self._message_buffer: Dict[int, datetime] = {}
+        self._known_managers: set[int] = set()
+        self._processed_message_ids: set[int] = set()
+        self._message_buffer: dict[int, datetime] = {}
 
     async def initialize(self) -> None:
         """Инициализация коллектора."""
@@ -83,7 +84,7 @@ class MessageCollector:
                 logger.info(f"Chat: {chat_title} ({chat_id}), User: {user_name}, Text: {text_preview}")
             else:
                 logger.info(f"Update without message: {update}")
-            
+
             # Игнорируем сообщения от ботов
             if update.message and update.message.from_user and update.message.from_user.is_bot:
                 logger.info("Skipping: message from bot")
@@ -132,7 +133,7 @@ class MessageCollector:
             logger.error(f"Error processing message: {e}", exc_info=True)
             # Логируем ошибку в Yandex Tracker (безопасно)
             if tracker:
-                try:
+                with contextlib.suppress(Exception):
                     await tracker.error(
                         summary="Error processing Telegram message",
                         data={
@@ -141,15 +142,13 @@ class MessageCollector:
                             "user_id": user_id if 'user_id' in locals() else None,
                         },
                     )
-                except Exception:
-                    pass  # Игнорируем ошибки трекера
 
     async def _parse_message(
         self,
         update: Update,
         context: ContextTypes.DEFAULT_TYPE,
         message_id: int,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Парсит данные сообщения из Update."""
         if not update.message:
             return None
@@ -189,41 +188,41 @@ class MessageCollector:
             "is_bot": user_role.is_bot,
         }
 
-    async def _extract_text(self, message, context) -> Optional[str]:
+    async def _extract_text(self, message, context) -> str | None:
         """Извлекает текст из сообщения (включая расшифровку голосовых)."""
         if message.text:
             return message.text
         if message.caption:
             return message.caption
-        
+
         # Расшифровка голосовых сообщений
         if message.voice:
             return await self._transcribe_voice(message, context)
-        
+
         return None
-    
-    async def _transcribe_voice(self, message, context) -> Optional[str]:
+
+    async def _transcribe_voice(self, message, context) -> str | None:
         """Расшифровывает голосовое сообщение через Yandex SpeechKit."""
         stt = get_stt()
         if not stt.is_configured:
             logger.debug("Yandex STT not configured, skipping voice transcription")
             return "[Голосовое сообщение]"
-        
+
         try:
             # Скачиваем аудио файл
             voice = message.voice
             file = await context.bot.get_file(voice.file_id)
             audio_bytes = await file.download_as_bytearray()
-            
+
             # Расшифровываем
             text = await stt.recognize(bytes(audio_bytes))
-            
+
             if text:
                 logger.info(f"Voice transcribed: {text[:50]}...")
                 return f"[Голосовое] {text}"
             else:
                 return "[Голосовое сообщение - не удалось расшифровать]"
-                
+
         except Exception as e:
             logger.error(f"Voice transcription failed: {e}")
             return "[Голосовое сообщение]"
@@ -258,11 +257,11 @@ class MessageCollector:
         # 1. Проверяем по конфигу ролей (приоритет)
         if is_staff(user.id):
             return True
-        
+
         # 2. Проверяем по ID из базы данных
         if user.id in self._known_managers:
             return True
-        
+
         # 3. Проверяем по ID из конфига (статический список)
         if user.id in MANAGER_IDS:
             return True
@@ -283,7 +282,7 @@ class MessageCollector:
 
         return False
 
-    async def _save_to_database(self, data: Dict[str, Any]) -> None:
+    async def _save_to_database(self, data: dict[str, Any]) -> None:
         """Сохраняет данные сообщения в базу."""
         start_time = datetime.utcnow()
         try:
@@ -382,27 +381,28 @@ class MessageCollector:
 async def main() -> None:
     """
     Запуск бота-коллектора сообщений.
-    
+
     Инициализирует Telegram Application, регистрирует обработчики
     и начинает приём сообщений из групп.
     """
     import logging
+
     from telegram.ext import Application
-    
+
     from config import settings
     from services.database import db
-    
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     logger = logging.getLogger(__name__)
-    
+
     if not settings.TELEGRAM_BOT_TOKEN:
         raise ValueError("TELEGRAM_BOT_TOKEN не задан")
-    
+
     logger.info("Starting Message Collector Bot...")
-    
+
     # Подключаемся к базе данных
     logger.info("Connecting to database...")
     await db.connect()
@@ -419,13 +419,13 @@ async def main() -> None:
         .post_init(lambda app: logger.info("Bot initialized"))
         .build()
     )
-    
+
     # Регистрируем обработчики
     message_collector.register_handlers(application)
-    
+
     # Инициализируем коллектор (загружает менеджеров из БД)
     await message_collector.initialize()
-    
+
     # Запускаем бота
     logger.info("Starting polling...")
     await application.initialize()

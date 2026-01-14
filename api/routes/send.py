@@ -3,11 +3,10 @@ Send API routes — песочница для отправки сообщени�
 """
 
 import logging
-from typing import Optional
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from datetime import datetime
 
 from api.auth import verify_api_key
 from services.database import db
@@ -21,7 +20,7 @@ class SendMessageRequest(BaseModel):
     """Запрос на отправку сообщения."""
     chat_id: int
     text: str
-    context: Optional[str] = None
+    context: str | None = None
 
 
 class SendMessageResponse(BaseModel):
@@ -36,9 +35,9 @@ class PendingResponse(BaseModel):
     """Ожидающее сообщение."""
     id: int
     chat_id: int
-    client_name: Optional[str] = None
+    client_name: str | None = None
     response_text: str
-    context: Optional[str] = None
+    context: str | None = None
     status: str
     created_at: str
 
@@ -50,13 +49,13 @@ async def send_message(
 ):
     """
     Создание запроса на отправку сообщения в песочницу.
-    
+
     Сообщение не отправляется сразу — требует одобрения администратора.
     """
     # Получаем имя чата
     chat = await db.get_chat(request.chat_id)
     client_name = chat.get("name") if chat else None
-    
+
     # Сохраняем в pending_responses
     result = await db.execute(
         """
@@ -69,11 +68,11 @@ async def send_message(
         request.text,
         request.context,
     )
-    
+
     pending_id = result.split()[-1]  # Получаем ID из результата
-    
+
     logger.info(f"Created pending response {pending_id} for chat {request.chat_id}")
-    
+
     return SendMessageResponse(
         pending_id=pending_id,
         chat_id=request.chat_id,
@@ -98,7 +97,7 @@ async def get_pending_responses(
         )
     except Exception:
         return []
-    
+
     return [
         PendingResponse(
             id=row["id"],
@@ -120,7 +119,7 @@ async def approve_response(
 ):
     """
     Одобрение отправки сообщения.
-    
+
     После одобрения сообщение отправляется в чат.
     """
     # Получаем pending response
@@ -132,12 +131,12 @@ async def approve_response(
         """,
         pending_id
     )
-    
+
     if not result:
         raise HTTPException(status_code=404, detail="Pending response not found")
-    
+
     pending = result[0]
-    
+
     # Здесь должен быть код отправки сообщения в Telegram
     # Это будет реализовано в bot/sender.py
     from bot.sandbox_manager import sandbox_manager
@@ -145,7 +144,7 @@ async def approve_response(
         chat_id=pending["chat_id"],
         text=pending["response_text"],
     )
-    
+
     # Обновляем статус
     await db.execute(
         """
@@ -155,9 +154,9 @@ async def approve_response(
         """,
         pending_id
     )
-    
+
     logger.info(f"Approved and sent pending response {pending_id}")
-    
+
     return {"status": "sent", "pending_id": pending_id}
 
 
@@ -176,9 +175,9 @@ async def reject_response(
         """,
         pending_id
     )
-    
+
     logger.info(f"Rejected pending response {pending_id}")
-    
+
     return {"status": "rejected", "pending_id": pending_id, "reason": reason}
 
 
@@ -192,5 +191,5 @@ async def delete_pending(
         "DELETE FROM pending_responses WHERE id = $1 AND status = 'pending'",
         pending_id
     )
-    
+
     return {"status": "deleted", "pending_id": pending_id}

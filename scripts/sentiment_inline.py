@@ -10,9 +10,10 @@ Sentiment Analysis - Inline Script
 import asyncio
 import os
 import sys
-import httpx
 from datetime import datetime
+
 import asyncpg
+import httpx
 
 # Читаем DeepSeek ключ из файла
 SECRETS_PATH = "/root/.secrets/cloud/deepseek.env"
@@ -44,7 +45,7 @@ async def get_messages(pool, date):
     """Получает сообщения за дату без sentiment."""
     date_start = date.replace(hour=0, minute=0, second=0, microsecond=0)
     date_end = date.replace(hour=23, minute=59, second=59, microsecond=999999)
-    
+
     query = """
         SELECT id, text FROM messages
         WHERE timestamp >= $1 AND timestamp <= $2
@@ -52,7 +53,7 @@ async def get_messages(pool, date):
         AND sentiment IS NULL
         ORDER BY id
     """
-    
+
     async with pool.acquire() as conn:
         return await conn.fetch(query, date_start, date_end)
 
@@ -62,7 +63,7 @@ async def analyze_sentiment(text: str) -> str:
     if not DEEPSEEK_API_KEY:
         print("  ⚠️  No API key, using neutral", file=sys.stderr)
         return "neutral"
-    
+
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
@@ -81,15 +82,15 @@ async def analyze_sentiment(text: str) -> str:
                     "max_tokens": 10,
                 },
             )
-            
+
             if response.status_code == 401:
                 print("  ❌ 401 Unauthorized - check API key", file=sys.stderr)
                 return "neutral"
-                
+
             response.raise_for_status()
             data = response.json()
             sentiment = data.get("choices", [{}])[0].get("message", {}).get("content", "neutral")
-            
+
             # Нормализуем
             sentiment = sentiment.strip().lower()
             # Убираем любые символы кроме букв
@@ -114,43 +115,43 @@ async def update_sentiment(pool, message_id: int, sentiment: str):
 async def main():
     date_str = sys.argv[1] if len(sys.argv) > 1 else "2026-01-12"
     date = datetime.strptime(date_str, "%Y-%m-%d")
-    
+
     # Подключение к БД (Docker network)
     database_url = "postgresql://cvgorod:cvgorod_secret_2024@postgres:5432/cvgorod_hub"
     pool = await asyncpg.create_pool(database_url, min_size=2, max_size=5)
-    
+
     try:
         messages = await get_messages(pool, date)
         print(f"Найдено сообщений без sentiment: {len(messages)}")
-        
+
         if not messages:
             print("Нечего обрабатывать!")
             return
-        
+
         stats = {"positive": 0, "negative": 0, "neutral": 0}
-        
+
         for i, msg in enumerate(messages):
             msg_id = msg["id"]
             text = msg["text"]
-            
+
             print(f"[{i+1}/{len(messages)}] {text[:60]}...")
-            
+
             sentiment = await analyze_sentiment(text)
             await update_sentiment(pool, msg_id, sentiment)
             stats[sentiment] += 1
-            
+
             print(f"  → {sentiment}")
-            
+
             # Пауза между запросами
             await asyncio.sleep(0.3)
-        
+
         print("\n" + "=" * 50)
         print("РЕЗУЛЬТАТЫ:")
         print(f"  ✅ Positive: {stats['positive']}")
         print(f"  ❌ Negative: {stats['negative']}")
         print(f"  ⚪ Neutral: {stats['neutral']}")
         print("=" * 50)
-        
+
     finally:
         await pool.close()
 

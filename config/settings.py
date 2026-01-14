@@ -5,6 +5,7 @@ Settings for cvgorod-hub.
 import os
 import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 
@@ -36,26 +37,27 @@ def _load_secrets() -> None:
     secrets_base = Path(os.getenv("SECRETS_PATH", str(Path.home() / '.secrets')))
 
     secret_files = [
-        secrets_base / 'telegram' / 'cvgorod.env',
-        secrets_base / 'cvgorod' / 'hub_api.env',
-        secrets_base / 'cloud' / 'deepseek.env',
+        secrets_base / 'telegram' / 'cvgorod_hub.token',  # TELEGRAM_BOT_TOKEN (единственное место!)
+        secrets_base / 'cvgorod' / 'hub_api.env',         # HUB_API_KEY
+        secrets_base / 'cloud' / 'deepseek.env',          # DEEPSEEK_API_KEY
     ]
 
-    loaded = []
-    for secret_file in secret_files:
-        if secret_file.exists():
-            load_dotenv(secret_file, override=False)
-            loaded.append(secret_file.name)
-
-    # Загружаем environment-specific .env файл
+    # Сначала загружаем .env (низкий приоритет)
     env = os.getenv("ENVIRONMENT", "development")
     env_file = f".env.{env}" if env != "development" else ".env"
     env_path = Path(env_file)
     if env_path.exists():
-        load_dotenv(env_path, override=True)
+        load_dotenv(env_path, override=False)
     else:
         # Fallback на базовый .env
         load_dotenv('.env', override=False)
+    
+    # Затем загружаем секреты (высокий приоритет, перезаписывают .env)
+    loaded = []
+    for secret_file in secret_files:
+        if secret_file.exists():
+            load_dotenv(secret_file, override=True)  # override=True для секретов!
+            loaded.append(secret_file.name)
 
 
 _load_secrets()

@@ -2,11 +2,12 @@
 """
 Sentiment Analysis - Simple version for Docker
 """
+import asyncio
 import os
 import sys
-import asyncio
-import httpx
+
 import asyncpg
+import httpx
 
 # API Key из переменной окружения
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
@@ -58,7 +59,7 @@ async def main():
     pool = await asyncpg.create_pool("postgresql://cvgorod:cvgorod_secret_2024@postgres:5432/cvgorod_hub", min_size=2, max_size=5)
     msgs = await get_messages(pool)
     print(f"Found {len(msgs)} messages", file=sys.stderr)
-    
+
     stats = {"positive": 0, "negative": 0, "neutral": 0}
     for i, msg in enumerate(msgs):
         print(f"[{i+1}/{len(msgs)}] {msg['text'][:50]}...", file=sys.stderr)
@@ -67,7 +68,7 @@ async def main():
         stats[sent] += 1
         print(f"  -> {sent}", file=sys.stderr)
         await asyncio.sleep(0.2)
-    
+
     print(f"\nResults: P:{stats['positive']} N:{stats['negative']} U:{stats['neutral']}", file=sys.stderr)
     await pool.close()
 

@@ -3,29 +3,28 @@ Sandbox Manager — управление песочницей ответов.
 """
 
 import logging
-from typing import Optional
 
 from telegram import Bot
 from telegram.error import TelegramError
 
-from services.database import db
 from bot.sender import MessageSender
+from services.database import db
 
 logger = logging.getLogger(__name__)
 
 
 class SandboxManager:
     """Менеджер песочницы для ответов бота."""
-    
+
     def __init__(self):
         self.sender = MessageSender()
-        self._bot: Optional[Bot] = None
-    
+        self._bot: Bot | None = None
+
     def set_bot(self, bot: Bot) -> None:
         """Установка бота для отправки сообщений."""
         self._bot = bot
         self.sender.bot = bot
-    
+
     async def send_approved_message(
         self,
         chat_id: int,
@@ -33,11 +32,11 @@ class SandboxManager:
     ) -> bool:
         """
         Отправка одобренного сообщения в чат.
-        
+
         Args:
             chat_id: ID чата
             text: Текст сообщения
-        
+
         Returns:
             True если отправлено успешно
         """
@@ -46,18 +45,18 @@ class SandboxManager:
             text=text,
             parse_mode="HTML",
         )
-    
+
     async def notify_admin_about_pending(
         self,
         pending_id: int,
         chat_id: int,
-        client_name: Optional[str],
+        client_name: str | None,
         text: str,
         admin_id: int,
     ) -> bool:
         """
         Уведомление администратора о новом ожидающем сообщении.
-        
+
         Args:
             pending_id: ID записи в pending_responses
             chat_id: ID чата
@@ -68,9 +67,9 @@ class SandboxManager:
         if not self._bot:
             logger.warning("Bot not initialized, cannot notify admin")
             return False
-        
+
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        
+
         keyboard = [
             [
                 InlineKeyboardButton("Одобрить", callback_data=f"sandbox_approve:{pending_id}"),
@@ -80,14 +79,14 @@ class SandboxManager:
                 InlineKeyboardButton("Изменить", callback_data=f"sandbox_edit:{pending_id}"),
             ],
         ]
-        
+
         message = (
             f"📬 <b>Новый ответ для одобрения</b>\n\n"
             f"👤 Клиент: {client_name or 'Неизвестен'}\n"
             f"💬 Текст:\n{text}\n\n"
             f"ID: {pending_id}"
         )
-        
+
         try:
             await self._bot.send_message(
                 chat_id=admin_id,
@@ -100,7 +99,7 @@ class SandboxManager:
         except TelegramError as e:
             logger.error(f"Failed to notify admin: {e}")
             return False
-    
+
     async def get_pending_for_approval(
         self,
         limit: int = 10,
@@ -116,7 +115,7 @@ class SandboxManager:
             """,
             limit
         )
-        
+
         return [
             {
                 "id": row["id"],

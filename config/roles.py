@@ -9,7 +9,6 @@
 - client: Клиент (по умолчанию)
 """
 
-from typing import Set, Optional, List
 from dataclasses import dataclass
 from enum import Enum
 
@@ -27,10 +26,10 @@ class UserRole(str, Enum):
 class UserInfo:
     """Информация о пользователе с ролью."""
     user_id: int
-    username: Optional[str]
-    phone: Optional[str]
+    username: str | None
+    phone: str | None
     role: UserRole
-    name: Optional[str] = None
+    name: str | None = None
 
 
 # ==================== КОНФИГУРАЦИЯ РОЛЕЙ ====================
@@ -45,7 +44,7 @@ ADMIN: UserInfo = UserInfo(
 )
 
 # Директора (могут работать с ботом, их диалоги пересылаются админу)
-DIRECTORS: List[UserInfo] = [
+DIRECTORS: list[UserInfo] = [
     UserInfo(
         user_id=5499578931,
         username="Djafar8554",
@@ -110,12 +109,12 @@ def get_admin_id() -> int:
     return ADMIN.user_id
 
 
-def get_director_ids() -> Set[int]:
+def get_director_ids() -> set[int]:
     """Возвращает ID всех директоров."""
     return {d.user_id for d in DIRECTORS if d.user_id is not None}
 
 
-def get_all_staff_ids() -> Set[int]:
+def get_all_staff_ids() -> set[int]:
     """Возвращает ID всех сотрудников (админ + директора + менеджеры)."""
     ids = {ADMIN.user_id}
     ids.update(d.user_id for d in DIRECTORS if d.user_id is not None)
@@ -123,12 +122,12 @@ def get_all_staff_ids() -> Set[int]:
     return ids
 
 
-def get_all_bot_ids() -> Set[int]:
+def get_all_bot_ids() -> set[int]:
     """Возвращает ID всех ботов."""
     return {b.user_id for b in BOTS}
 
 
-def get_all_non_client_ids() -> Set[int]:
+def get_all_non_client_ids() -> set[int]:
     """Возвращает ID всех НЕ-клиентов (сотрудники + боты)."""
     return get_all_staff_ids() | get_all_bot_ids()
 
@@ -137,19 +136,19 @@ def get_user_role(user_id: int) -> UserRole:
     """Определяет роль пользователя по ID."""
     if user_id == ADMIN.user_id:
         return UserRole.ADMIN
-    
+
     for director in DIRECTORS:
         if director.user_id and user_id == director.user_id:
             return UserRole.DIRECTOR
-    
+
     for manager in MANAGERS:
         if user_id == manager.user_id:
             return UserRole.MANAGER
-    
+
     for bot in BOTS:
         if user_id == bot.user_id:
             return UserRole.BOT
-    
+
     return UserRole.CLIENT
 
 
@@ -159,25 +158,25 @@ def get_user_role_by_username(username: str) -> UserRole:
     return user.role if user else UserRole.CLIENT
 
 
-def get_user_by_username(username: str) -> Optional[UserInfo]:
+def get_user_by_username(username: str) -> UserInfo | None:
     """Находит пользователя по username."""
     username_clean = username.lstrip("@").lower()
-    
+
     if ADMIN.username and ADMIN.username.lower() == username_clean:
         return ADMIN
-    
+
     for director in DIRECTORS:
         if director.username and director.username.lower() == username_clean:
             return director
-    
+
     for manager in MANAGERS:
         if manager.username and manager.username.lower() == username_clean:
             return manager
-    
+
     for bot in BOTS:
         if bot.username and bot.username.lower() == username_clean:
             return bot
-    
+
     return None
 
 
@@ -242,7 +241,7 @@ async def async_get_user_role(user_id: int):
         return static_role
 
 
-async def async_get_all_staff_ids() -> Set[int]:
+async def async_get_all_staff_ids() -> set[int]:
     """
     Возвращает множество ID всех сотрудников из БД.
 
@@ -257,7 +256,7 @@ async def async_get_all_staff_ids() -> Set[int]:
         return get_all_staff_ids()
 
 
-async def async_get_all_bot_ids() -> Set[int]:
+async def async_get_all_bot_ids() -> set[int]:
     """
     Возвращает множество ID всех ботов из БД.
 
@@ -272,7 +271,7 @@ async def async_get_all_bot_ids() -> Set[int]:
         return get_all_bot_ids()
 
 
-async def async_get_all_non_client_ids() -> Set[int]:
+async def async_get_all_non_client_ids() -> set[int]:
     """
     Возвращает множество ID всех НЕ-клиентов из БД.
 
@@ -344,9 +343,9 @@ async def async_is_client(user_id: int) -> bool:
 # ==================== ЭКСПОРТ ====================
 
 # Обратная совместимость с MANAGER_NAMES в других модулях
-MANAGER_NAMES: Set[str] = {"джафар", "сеймур", "polad", "alan"}
-MANAGER_IDS: Set[int] = get_all_staff_ids()
-BOT_IDS: Set[int] = get_all_bot_ids()
-DIRECTOR_IDS: Set[int] = get_director_ids()
+MANAGER_NAMES: set[str] = {"джафар", "сеймур", "polad", "alan"}
+MANAGER_IDS: set[int] = get_all_staff_ids()
+BOT_IDS: set[int] = get_all_bot_ids()
+DIRECTOR_IDS: set[int] = get_director_ids()
 ADMIN_ID: int = get_admin_id()
 

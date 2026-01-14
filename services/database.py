@@ -191,13 +191,14 @@ class Database:
                 u.username,
                 u.first_name,
                 u.last_name,
-                u.role as user_role,
+                ur.role_name as user_role,
                 u.is_manager,
                 uc.role as chat_role,
                 uc.joined_at,
                 uc.last_activity,
                 uc.message_count
             FROM users u
+            LEFT JOIN user_roles ur ON u.role_id = ur.id
             LEFT JOIN user_chats uc ON u.id = uc.user_id AND uc.chat_id = $1
             WHERE uc.id IS NOT NULL
             ORDER BY uc.last_activity DESC
@@ -250,11 +251,12 @@ class Database:
     async def get_all_managers(self) -> list[dict[str, Any]]:
         """Возвращает список всех менеджеров."""
         query = """
-            SELECT u.*, COUNT(DISTINCT m.chat_id) as chats_count
+            SELECT u.*, r.role_name as role, COUNT(DISTINCT m.chat_id) as chats_count
             FROM users u
+            LEFT JOIN user_roles r ON u.role_id = r.id
             LEFT JOIN messages m ON u.id = m.user_id
-            WHERE u.role = 'MANAGER' OR u.is_manager = TRUE
-            GROUP BY u.id
+            WHERE r.role_name = 'manager' OR u.is_manager = TRUE
+            GROUP BY u.id, r.role_name
             ORDER BY u.first_seen
         """
         async with self.acquire() as conn:
@@ -274,7 +276,7 @@ class Database:
         param_idx = 1
 
         if role is not None:
-            conditions.append(f"u.role = ${param_idx}")
+            conditions.append(f"ur.role_name = ${param_idx}")
             params.append(role)
             param_idx += 1
 
@@ -284,13 +286,14 @@ class Database:
         where_clause = " AND ".join(conditions) if conditions else "1=1"
 
         query = f"""
-            SELECT u.*,
+            SELECT u.*, ur.role_name as role,
                    COUNT(DISTINCT m.chat_id) as chats_count,
                    COUNT(m.id) as messages_count
             FROM users u
+            LEFT JOIN user_roles ur ON u.role_id = ur.id
             LEFT JOIN messages m ON u.id = m.user_id
             WHERE {where_clause}
-            GROUP BY u.id
+            GROUP BY u.id, ur.role_name
             ORDER BY u.last_seen DESC
             LIMIT ${param_idx} OFFSET ${param_idx + 1}
         """
@@ -306,25 +309,29 @@ class Database:
         days: int = 30,
     ) -> dict[str, Any]:
         """Возвращает статистику пользователя."""
+        from datetime import timedelta
+        days_interval = timedelta(days=days)
+        
         # Основная статистика
         query = """
             SELECT
                 u.id,
                 u.username,
                 u.first_name,
-                u.role,
+                ur.role_name as role,
                 u.is_manager,
                 COUNT(DISTINCT m.chat_id) as chats_count,
                 COUNT(m.id) as messages_count,
                 MIN(m.timestamp) as first_message,
                 MAX(m.timestamp) as last_message
             FROM users u
+            LEFT JOIN user_roles ur ON u.role_id = ur.id
             LEFT JOIN messages m ON u.id = m.user_id
-                AND m.timestamp >= NOW() - ($1 || ' days')::interval
+                AND m.timestamp >= NOW() - $1
             WHERE u.id = $2
-            GROUP BY u.id
+            GROUP BY u.id, ur.role_name
         """
-        row = await db.fetchrow(query, days, user_id)
+        row = await db.fetchrow(query, days_interval, user_id)
         
         if not row:
             return {}
@@ -338,10 +345,10 @@ class Database:
                 COUNT(*) as count
             FROM messages m
             WHERE m.user_id = $1
-                AND m.timestamp >= NOW() - ($2 || ' days')::interval
+                AND m.timestamp >= NOW() - $2
             GROUP BY m.role
         """
-        role_rows = await db.fetch(role_query, user_id, days)
+        role_rows = await db.fetch(role_query, user_id, days_interval)
         result["by_role"] = [dict(r) for r in role_rows]
         
         # Статистика рассылок
@@ -619,10 +626,11 @@ class Database:
                 m.*,
                 u.username,
                 u.first_name,
-                u.role as user_role,
+                ur.role_name as user_role,
                 c.name as chat_name
             FROM messages m
             LEFT JOIN users u ON m.user_id = u.id
+            LEFT JOIN user_roles ur ON u.role_id = ur.id
             LEFT JOIN chats c ON m.chat_id = c.id
             WHERE {where_clause}
             ORDER BY m.timestamp DESC
@@ -982,10 +990,11 @@ class Database:
                 COUNT(DISTINCT m.chat_id) as chats_count,
                 COUNT(m.id) as messages_count
             FROM users u
+            LEFT JOIN user_roles ur ON u.role_id = ur.id
             LEFT JOIN messages m ON u.id = m.user_id
                 AND (m.timestamp >= $1 OR $1 IS NULL)
                 AND (m.timestamp <= $2 OR $2 IS NULL)
-            WHERE u.role = 'MANAGER' OR u.is_manager = TRUE
+            WHERE ur.role_name = 'manager' OR u.is_manager = TRUE
             GROUP BY u.id, u.first_name
             ORDER BY messages_count DESC
             LIMIT 10
@@ -1006,6 +1015,8 @@ class Database:
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Возвращает вопросы клиентов без ответов."""
+        from datetime import timedelta
+        hours_interval = timedelta(hours=hours)
         query = """
             SELECT
                 m.id as message_id,
@@ -1025,14 +1036,14 @@ class Database:
                     SELECT 1 FROM messages m2
                     WHERE m2.chat_id = m.chat_id
                         AND m2.timestamp > m.timestamp
-                        AND m2.timestamp < m.timestamp + ($1 || ' hours')::interval
+                        AND m2.timestamp < m.timestamp + $1
                         AND m2.role = 'MANAGER'
                 )
-                AND m.timestamp > NOW() - ($2 || ' hours')::interval
+                AND m.timestamp > NOW() - $2
             ORDER BY m.timestamp DESC
             LIMIT $3
         """
-        rows = await db.fetch(query, hours, hours, limit)
+        rows = await db.fetch(query, hours_interval, hours_interval, limit)
         return [dict(row) for row in rows]
 
 

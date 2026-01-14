@@ -1,0 +1,11 @@
+{
+  "include": ["api", "bot", "services", "config", "tests"],
+  "exclude": ["**/__pycache__", "**/*.pyc", ".venv", "venv"],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic",
+  "extraPaths": [".", "/Users/danielbadygov/MCP"],
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none",
+  "reportUnusedImport": "warning",
+  "reportUnusedVariable": "warning"
+}

@@ -3,21 +3,19 @@ Message Sender — отправка сообщений клиентам в гр�
 """
 
 import logging
-from typing import Optional
 
 from telegram import Bot
 from telegram.error import TelegramError
-
 
 logger = logging.getLogger(__name__)
 
 
 class MessageSender:
     """Отправка сообщений в Telegram группы."""
-    
-    def __init__(self, bot: Optional[Bot] = None):
+
+    def __init__(self, bot: Bot | None = None):
         self.bot = bot
-    
+
     async def send_to_chat(
         self,
         chat_id: int,
@@ -26,19 +24,19 @@ class MessageSender:
     ) -> bool:
         """
         Отправка сообщения в чат.
-        
+
         Args:
             chat_id: ID чата
             text: Текст сообщения
             parse_mode: Формат (HTML, Markdown)
-        
+
         Returns:
             True если отправлено успешно
         """
         if not self.bot:
             logger.warning("Bot not initialized, cannot send message")
             return False
-        
+
         try:
             await self.bot.send_message(
                 chat_id=chat_id,
@@ -50,7 +48,7 @@ class MessageSender:
         except TelegramError as e:
             logger.error(f"Failed to send message to {chat_id}: {e}")
             return False
-    
+
     async def send_with_keyboard(
         self,
         chat_id: int,
@@ -61,9 +59,9 @@ class MessageSender:
         """Отправка сообщения с inline keyboard."""
         if not self.bot:
             return False
-        
+
         from telegram import InlineKeyboardMarkup
-        
+
         try:
             await self.bot.send_message(
                 chat_id=chat_id,

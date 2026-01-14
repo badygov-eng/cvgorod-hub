@@ -74,5 +74,131 @@ mcp deploy --project cvgorod-hub
 3. Pydantic Strict Mode
 4. Type Hints — ВСЕГДА
 
+## КРИТИЧЕСКИЕ ПРАВИЛА (после инцидента 14.01.2026)
+
+### Бэкап ПЕРЕД любыми изменениями БД
+```bash
+# ОБЯЗАТЕЛЬНО перед миграциями, деплоем, изменением схемы:
+./scripts/backup_db.sh
+```
+
+### Проверка данных ПОСЛЕ миграции
+```bash
+docker exec cvgorod-hub-postgres psql -U cvgorod -d cvgorod_hub -c "
+SELECT 'chats', COUNT(*) FROM chats
+UNION ALL SELECT 'users', COUNT(*) FROM users  
+UNION ALL SELECT 'messages', COUNT(*) FROM messages;
+"
+# Ожидаемый минимум: >200 чатов, >200 users, >40000 messages
+```
+
+### ЗАПРЕЩЕНО без бэкапа
+- `docker volume rm cvgorod-hub_postgres_data`
+- `docker-compose down -v`
+
+### Автобэкап
+- Настроен cron: `0 3 * * *` → `/home/badygovdaniil/cvgorod-hub/scripts/auto_backup.sh`
+- Проверять еженедельно: `ls -la backups/`
+
+### Источники данных
+| Volume | База | Описание |
+|--------|------|----------|
+| cvgorod-hub_postgres_data | cvgorod_hub | Текущая БД |
+| cvgorod_postgres_data | cvgorod_messages | Старая БД (бэкап) |
+
+См. полные правила: `DATA_MIGRATION_RULES.md`
+
 ## Язык
 Отвечать на русском языке.
+
+---
+
+## 🗄️ КРИТИЧНО: Работа с базами данных
+
+> **ИНЦИДЕНТ 14.01.2026:** Потеряно 40,000+ записей из-за путаницы с Docker volumes.
+> 📖 Полные правила: `~/MCP/docs/DATABASE_OPERATIONS.md`
+
+### Бэкап ПЕРЕД любыми изменениями БД
+```bash
+./scripts/backup_db.sh
+```
+
+### ЗАПРЕЩЕНО без бэкапа
+- `docker-compose down -v` — удаляет ВСЕ volumes!
+- `docker volume rm` / `docker volume prune`
+- `TRUNCATE`, `DROP TABLE`
+
+### При миграции — ЧЕКЛИСТ
+1. Записать количество записей в ИСТОЧНИКЕ
+2. Сделать бэкап: `./scripts/backup_db.sh`
+3. Выполнить миграцию
+4. Проверить количество записей
+5. Если не совпадает — СТОП!
+
+
+---
+
+## 🧪 ПРАВИЛА ТЕСТИРОВАНИЯ (ОБЯЗАТЕЛЬНО!)
+
+> 📖 Полные правила: `~/MCP/docs/TESTING_RULES.md`
+
+### Database Connection — НИКОГДА не хардкодить!
+
+```python
+# ❌ НЕПРАВИЛЬНО:
+conn = await asyncpg.connect(host='localhost', port=5432)
+
+# ✅ ПРАВИЛЬНО:
+from tests.conftest import get_db_config
+conn = await asyncpg.connect(**get_db_config())
+```
+
+### Стандартный get_db_config()
+
+```python
+def get_db_config() -> dict:
+    return {
+        'host': os.getenv('DB_HOST', 'localhost'),
+        'port': int(os.getenv('DB_PORT', '5434')),  # External!
+        'user': os.getenv('DB_USER', 'postgres'),
+        'password': os.getenv('DB_PASSWORD', 'postgres'),
+        'database': os.getenv('DB_NAME', 'app'),
+    }
+```
+
+### Порты БД в Docker
+
+| Контекст | Хост | Порт |
+|----------|------|------|
+| Локально (тесты) | `localhost` | `5434` |
+| В контейнере | `postgres` | `5432` |
+
+### asyncpg Exceptions
+
+```python
+# ✅ ПРАВИЛЬНО (v0.28+):
+asyncpg.InvalidCatalogNameError
+
+# ❌ УСТАРЕЛО:
+asyncpg.InvalidCatalogError
+```
+
+### Graceful DB Absence
+
+```python
+if response.status_code == 500:
+    pytest.skip("Database not available")
+```
+
+### Docker Platform (Mac → Server)
+
+```bash
+# ❌ НЕПРАВИЛЬНО:
+docker build -t myapp .
+
+# ✅ ПРАВИЛЬНО:
+docker build --platform linux/amd64 -t myapp .
+```
+
+📖 Docker правила: `~/MCP/docs/DOCKER_RULES.md`
+

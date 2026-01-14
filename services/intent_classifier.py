@@ -15,7 +15,6 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 # Add MCP path for shared modules
 # Use MCP_PATH env var, or default to ~/MCP
@@ -23,11 +22,11 @@ mcp_path = Path(os.getenv("MCP_PATH", str(Path.home() / "MCP")))
 if mcp_path.exists() and str(mcp_path) not in sys.path:
     sys.path.insert(0, str(mcp_path))
 
-from config import settings
-from services.database import db
-
 # httpx нужен для тестов и fallback
 import httpx
+
+from config import settings
+from services.database import db
 
 # Try to use MCP DeepSeekClient, fallback to direct implementation
 try:
@@ -86,7 +85,7 @@ class IntentClassifier:
 - "Да, заказываю" -> intent: confirmation, sentiment: positive
 """
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: str | None = None):
         self.model = settings.DEEPSEEK_MODEL
 
         if USE_MCP_CLIENT:
@@ -202,17 +201,17 @@ class IntentClassifier:
                 tokens_used=0,
                 processing_time_ms=processing_time,
             )
-    
+
     async def save_analysis(
         self,
         analysis: MessageAnalysis,
     ) -> int:
         """
         Сохранение результата анализа в БД.
-        
+
         Args:
             analysis: Результат анализа
-        
+
         Returns:
             ID записи в message_analysis
         """
@@ -234,7 +233,7 @@ class IntentClassifier:
             analysis.tokens_used,
             analysis.processing_time_ms,
         )
-        
+
         return int(result.split()[-1])
 
 

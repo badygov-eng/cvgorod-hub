@@ -30,24 +30,26 @@ async def get_intent_stats(
 ):
     """
     Получение статистики по интентам за период.
-    
+
     Returns:
         - by_intent: {question: count, order: count, complaint: count, ...}
         - by_sentiment: {positive: count, neutral: count, negative: count}
     """
     # Проверяем есть ли таблица message_analysis
     try:
+        from datetime import timedelta
+        interval = timedelta(days=days)
         result = await db.fetch(
             """
-            SELECT 
+            SELECT
                 COALESCE(intent, 'unknown') as intent,
                 COALESCE(sentiment, 'unknown') as sentiment,
                 COUNT(*) as count
             FROM message_analysis
-            WHERE created_at >= NOW() - INTERVAL '$1 days'
+            WHERE created_at >= NOW() - $1
             GROUP BY 1, 2
             """,
-            days
+            interval
         )
     except Exception:
         # Таблица ещё не создана
@@ -57,20 +59,20 @@ async def get_intent_stats(
             by_intent={},
             by_sentiment={},
         )
-    
+
     by_intent = {}
     by_sentiment = {}
-    
+
     for row in result:
         intent = row.get("intent", "unknown")
         sentiment = row.get("sentiment", "unknown")
         count = row.get("count", 0)
-        
+
         by_intent[intent] = by_intent.get(intent, 0) + count
         by_sentiment[sentiment] = by_sentiment.get(sentiment, 0) + count
-    
+
     total = sum(by_intent.values())
-    
+
     return IntentStatsResponse(
         period_days=days,
         total_analyzed=total,
@@ -86,22 +88,24 @@ async def get_daily_intent_stats(
 ):
     """Ежедневная статистика по интентам."""
     try:
+        from datetime import timedelta
+        interval = timedelta(days=days)
         result = await db.fetch(
             """
-            SELECT 
+            SELECT
                 DATE(created_at) as date,
                 COALESCE(intent, 'unknown') as intent,
                 COUNT(*) as count
             FROM message_analysis
-            WHERE created_at >= NOW() - INTERVAL '$1 days'
+            WHERE created_at >= NOW() - $1
             GROUP BY 1, 2
             ORDER BY 1 DESC, 3 DESC
             """,
-            days
+            interval
         )
     except Exception:
         return {"daily": []}
-    
+
     daily = []
     for row in result:
         daily.append({
@@ -109,7 +113,7 @@ async def get_daily_intent_stats(
             "intent": row.get("intent", "unknown"),
             "count": row.get("count", 0),
         })
-    
+
     return {"daily": daily}
 
 
@@ -134,7 +138,7 @@ async def get_urgent_messages(
         )
     except Exception:
         return {"urgent": []}
-    
+
     urgent = []
     for row in result:
         urgent.append({
@@ -145,5 +149,5 @@ async def get_urgent_messages(
             "chat_name": row.get("chat_name"),
             "timestamp": str(row.get("timestamp")),
         })
-    
+
     return {"urgent": urgent}

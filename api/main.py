@@ -5,19 +5,19 @@ REST API для работы с сообщениями, клиентами и п
 
 import logging
 import os
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, List
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.routes import clients, intents, messages, send
 from config import settings
-from api.routes import messages, clients, intents, send
 
 logger = logging.getLogger(__name__)
 
 
-def get_cors_origins() -> List[str]:
+def get_cors_origins() -> list[str]:
     """Получить разрешённые origins в зависимости от среды."""
     env = os.getenv("ENVIRONMENT", "development")
 
@@ -46,7 +46,7 @@ def get_cors_origins() -> List[str]:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Startup и shutdown events."""
     logger.info("cvgorod-hub API starting...")
-    
+
     # Подключение к базе данных
     from services.database import db
     try:
@@ -54,9 +54,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("Database connected")
     except Exception as e:
         logger.error(f"Failed to connect to database: {e}")
-    
+
     yield
-    
+
     # Закрытие соединений
     await db.close()
     logger.info("cvgorod-hub API stopped")

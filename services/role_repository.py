@@ -13,7 +13,7 @@ Role Repository - работа с ролями пользователей в Pos
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Set, List, Dict, Any
+from typing import Any
 
 from services.database import db
 
@@ -36,7 +36,7 @@ class RoleInfo:
     id: int
     role_name: str
     display_name: str
-    description: Optional[str]
+    description: str | None
     is_staff: bool
     is_bot: bool
     exclude_from_analytics: bool
@@ -51,7 +51,7 @@ class RoleRepository:
     """
 
     # Кэш для статического конфига (fallback)
-    _static_role_cache: Optional[Dict[int, RoleInfo]] = None
+    _static_role_cache: dict[int, RoleInfo] | None = None
 
     def __init__(self):
         self._db_initialized = False
@@ -70,15 +70,13 @@ class RoleRepository:
             self._db_initialized = False
             return False
 
-    def _get_static_role_info(self, user_id: int) -> Optional[RoleInfo]:
+    def _get_static_role_info(self, user_id: int) -> RoleInfo | None:
         """
         Возвращает информацию о роли из статического конфига.
 
         Используется как fallback если БД недоступна.
         """
-        from config.roles import (
-            ADMIN, DIRECTORS, MANAGERS, BOTS
-        )
+        from config.roles import ADMIN, BOTS, DIRECTORS, MANAGERS
 
         # Админ
         if user_id == ADMIN.user_id:
@@ -159,7 +157,7 @@ class RoleRepository:
         if await self._ensure_db():
             try:
                 query = """
-                    SELECT 
+                    SELECT
                         ur.id, ur.role_name, ur.display_name, ur.description,
                         ur.is_staff, ur.is_bot, ur.exclude_from_analytics
                     FROM users u
@@ -196,7 +194,7 @@ class RoleRepository:
             exclude_from_analytics=False
         )
 
-    async def get_role_by_id(self, role_id: int) -> Optional[RoleInfo]:
+    async def get_role_by_id(self, role_id: int) -> RoleInfo | None:
         """
         Возвращает информацию о роли по ID.
 
@@ -209,7 +207,7 @@ class RoleRepository:
         if await self._ensure_db():
             try:
                 query = """
-                    SELECT 
+                    SELECT
                         id, role_name, display_name, description,
                         is_staff, is_bot, exclude_from_analytics
                     FROM user_roles
@@ -231,14 +229,14 @@ class RoleRepository:
 
         return None
 
-    async def get_all_staff_ids(self) -> Set[int]:
+    async def get_all_staff_ids(self) -> set[int]:
         """
         Возвращает множество ID всех сотрудников (админ + директора + менеджеры).
 
         Returns:
             Множество user_id сотрудников
         """
-        staff_ids: Set[int] = set()
+        staff_ids: set[int] = set()
 
         # Пробуем из БД
         if await self._ensure_db():
@@ -262,14 +260,14 @@ class RoleRepository:
         logger.info(f"Using {len(staff_ids)} staff IDs from static config")
         return staff_ids
 
-    async def get_all_bot_ids(self) -> Set[int]:
+    async def get_all_bot_ids(self) -> set[int]:
         """
         Возвращает множество ID всех ботов.
 
         Returns:
             Множество user_id ботов
         """
-        bot_ids: Set[int] = set()
+        bot_ids: set[int] = set()
 
         # Пробуем из БД
         if await self._ensure_db():
@@ -293,14 +291,14 @@ class RoleRepository:
         logger.info(f"Using {len(bot_ids)} bot IDs from static config")
         return bot_ids
 
-    async def get_all_non_client_ids(self) -> Set[int]:
+    async def get_all_non_client_ids(self) -> set[int]:
         """
         Возвращает множество ID всех НЕ-клиентов (сотрудники + боты).
 
         Returns:
             Множество user_id не-клиентов
         """
-        non_client_ids: Set[int] = set()
+        non_client_ids: set[int] = set()
 
         # Пробуем из БД
         if await self._ensure_db():
@@ -363,7 +361,7 @@ class RoleRepository:
         role = await self.get_user_role(user_id)
         return not role.is_staff and not role.is_bot
 
-    async def get_patterns_by_type(self, pattern_type: str) -> List[Dict[str, Any]]:
+    async def get_patterns_by_type(self, pattern_type: str) -> list[dict[str, Any]]:
         """
         Возвращает паттерны сообщений по типу.
 
@@ -376,7 +374,7 @@ class RoleRepository:
         if await self._ensure_db():
             try:
                 query = """
-                    SELECT 
+                    SELECT
                         id, pattern_name, pattern_type, keyword_patterns,
                         regex_pattern, sender_role_id, min_text_length,
                         auto_classify, priority, description
@@ -391,7 +389,7 @@ class RoleRepository:
 
         return []
 
-    async def classify_message(self, text: str, user_id: int) -> Optional[int]:
+    async def classify_message(self, text: str, user_id: int) -> int | None:
         """
         Классифицирует сообщение по тексту и роли отправителя.
 
@@ -413,7 +411,7 @@ class RoleRepository:
 
         return None
 
-    async def get_role_id_by_name(self, role_name: str) -> Optional[int]:
+    async def get_role_id_by_name(self, role_name: str) -> int | None:
         """
         Возвращает ID роли по имени.
 
@@ -454,17 +452,17 @@ async def get_user_role(user_id: int) -> RoleInfo:
     return await role_repository.get_user_role(user_id)
 
 
-async def get_all_staff_ids() -> Set[int]:
+async def get_all_staff_ids() -> set[int]:
     """Возвращает ID всех сотрудников."""
     return await role_repository.get_all_staff_ids()
 
 
-async def get_all_bot_ids() -> Set[int]:
+async def get_all_bot_ids() -> set[int]:
     """Возвращает ID всех ботов."""
     return await role_repository.get_all_bot_ids()
 
 
-async def get_all_non_client_ids() -> Set[int]:
+async def get_all_non_client_ids() -> set[int]:
     """Возвращает ID всех не-клиентов."""
     return await role_repository.get_all_non_client_ids()
 

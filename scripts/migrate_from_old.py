@@ -4,31 +4,32 @@ Copy messages, chats, users from old database to new structure.
 """
 
 import asyncio
-import asyncpg
 import os
+
+import asyncpg
 
 
 async def migrate():
     """
     Миграция данных из старого проекта.
-    
+
     Sources:
     - Old DATABASE_URL from environment
     - Default: postgresql://localhost/cvgorod_messages
-    
+
     Target:
     - New DATABASE_URL for cvgorod-hub
     - Default: postgresql://localhost/cvgorod_hub
     """
     old_db_url = os.getenv("OLD_DATABASE_URL", "postgresql://localhost/cvgorod_messages")
     new_db_url = os.getenv("DATABASE_URL", "postgresql://localhost/cvgorod_hub")
-    
+
     print(f"Old DB: {old_db_url}")
     print(f"New DB: {new_db_url}")
-    
+
     old_conn = await asyncpg.connect(old_db_url)
     new_conn = await asyncpg.connect(new_db_url)
-    
+
     try:
         # Миграция чатов
         print("Migrating chats...")
@@ -48,7 +49,7 @@ async def migrate():
             except Exception as e:
                 print(f"Error inserting chat {chat['id']}: {e}")
         print(f"Migrated {len(chats)} chats")
-        
+
         # Миграция пользователей
         print("Migrating users...")
         users = await old_conn.fetch("SELECT * FROM users")
@@ -67,7 +68,7 @@ async def migrate():
             except Exception as e:
                 print(f"Error inserting user {user['id']}: {e}")
         print(f"Migrated {len(users)} users")
-        
+
         # Миграция сообщений
         print("Migrating messages...")
         messages = await old_conn.fetch("SELECT * FROM messages ORDER BY timestamp DESC LIMIT 100000")
@@ -86,7 +87,7 @@ async def migrate():
             except Exception as e:
                 print(f"Error inserting message {msg['id']}: {e}")
         print(f"Migrated {len(messages)} messages")
-        
+
         # Миграция сессий агента (опционально)
         print("Migrating agent sessions...")
         try:
@@ -120,9 +121,9 @@ async def migrate():
             print(f"Migrated {len(sessions)} agent sessions")
         except Exception as e:
             print(f"Agent sessions table not found in old DB: {e}")
-        
+
         print("\nMigration completed successfully!")
-        
+
     finally:
         await old_conn.close()
         await new_conn.close()

@@ -367,13 +367,16 @@ async def get_active_clients(
     days: int = Query(7, ge=1, le=365),
 ):
     """Статистика активных клиентов за период."""
+    # Use timedelta and pass as interval using asyncpg's interval support
+    from datetime import timedelta
+    interval = timedelta(days=days)
     query = """
         SELECT COUNT(DISTINCT user_id) as active_users
         FROM messages
-        WHERE timestamp >= NOW() - INTERVAL '$1 days'
+        WHERE timestamp >= NOW() - $1
             AND role = 'CLIENT'
     """
-    result = await db.fetchval(query, days)
+    result = await db.fetchval(query, interval)
 
     return {"active_clients": result or 0}
 
