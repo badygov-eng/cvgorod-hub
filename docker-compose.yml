@@ -6,10 +6,12 @@ services:
     container_name: cvgorod-hub-api
     ports:
       - "127.0.0.1:8300:8000"
-    env_file:
-      - .env
+    # env_file removed - use secrets from ~/.secrets/
     environment:
+      - ENVIRONMENT=production
       - SECRETS_PATH=/root/.secrets
+      - HUB_API_HOST=0.0.0.0
+      - HUB_API_PORT=8000
     volumes:
       - ./api:/app/api:ro
       - ./bot:/app/bot:ro
@@ -40,10 +42,11 @@ services:
       context: .
       dockerfile: Dockerfile.bot
     container_name: cvgorod-hub-bot
-    env_file:
-      - .env
+    # env_file removed - use secrets from ~/.secrets/
     environment:
+      - ENVIRONMENT=production
       - SECRETS_PATH=/root/.secrets
+      - TELEGRAM_BOT_TOKEN
     volumes:
       - ./bot:/app/bot:ro
       - ./services:/app/services:ro
