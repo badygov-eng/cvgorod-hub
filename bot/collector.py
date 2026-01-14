@@ -22,7 +22,16 @@ from telegram.ext import Application, ContextTypes
 from services.database import db
 from services.role_repository import role_repository, get_user_role, is_staff
 from services.yandex_stt import get_stt
-from services.tracker import tracker, log_telegram_message, log_database_operation
+
+# Safe tracker import (with fallback)
+try:
+    from services.tracker import tracker, log_telegram_message, log_database_operation
+except ImportError:
+    tracker = None
+    async def log_telegram_message(chat_id, message_type, has_intent):
+        pass
+    async def log_database_operation(operation, table, success, duration_ms, error=None):
+        pass
 from config.roles import (
     MANAGER_IDS, BOT_IDS, MANAGER_NAMES,
     UserRole
@@ -109,15 +118,19 @@ class MessageCollector:
 
         except Exception as e:
             logger.error(f"Error processing message: {e}", exc_info=True)
-            # Логируем ошибку в Yandex Tracker
-            await tracker.error(
-                summary=f"Error processing Telegram message",
-                data={
-                    "error": str(e),
-                    "chat_id": chat_id if 'chat_id' in locals() else None,
-                    "user_id": user_id if 'user_id' in locals() else None,
-                },
-            )
+            # Логируем ошибку в Yandex Tracker (безопасно)
+            if tracker:
+                try:
+                    await tracker.error(
+                        summary=f"Error processing Telegram message",
+                        data={
+                            "error": str(e),
+                            "chat_id": chat_id if 'chat_id' in locals() else None,
+                            "user_id": user_id if 'user_id' in locals() else None,
+                        },
+                    )
+                except Exception:
+                    pass  # Игнорируем ошибки трекера
 
     async def _parse_message(
         self,

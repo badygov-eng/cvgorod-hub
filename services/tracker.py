@@ -14,9 +14,14 @@ cvgorod-hub Tracker Integration - Автоматическое логирова�
 import os
 import sys
 from pathlib import Path
+from datetime import datetime
+from typing import Optional, Dict, Any
+from dataclasses import dataclass
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Add paths to find MCP shared modules
-# Use MCP_PATH env var, or default to ~/MCP
 _project_root = Path(__file__).resolve().parent.parent
 _mcp_path = Path(os.getenv("MCP_PATH", str(Path.home() / "MCP")))
 
@@ -25,8 +30,40 @@ for p in [_project_root, _mcp_path]:
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
-# Import shared tracker events module directly
-from shared.tracker_events import TrackerEvents, Priority
+# Try to import shared tracker events module, fallback to local implementation
+_TRACKER_AVAILABLE = False
+try:
+    from shared.tracker_events import TrackerEvents, Priority
+    _TRACKER_AVAILABLE = True
+except ImportError:
+    logger.warning("MCP shared tracker not available, using local implementation")
+    Priority = None  # Define placeholder
+
+
+# ========================================
+# LOCAL DUMMY TRACKER (fallback)
+# ========================================
+
+class DummyTracker:
+    """Dummy tracker when MCP is not available."""
+
+    def __init__(self, project: str, component: str, enabled: bool = False):
+        self.project = project
+        self.component = component
+        self.enabled = enabled
+
+    async def info(self, summary: str, data: Dict[str, Any] = None):
+        if self.enabled:
+            logger.info(f"[Tracker] INFO: {summary}")
+
+    async def error(self, summary: str, data: Dict[str, Any] = None):
+        if self.enabled:
+            logger.error(f"[Tracker] ERROR: {summary}")
+
+    async def warning(self, summary: str, data: Dict[str, Any] = None):
+        if self.enabled:
+            logger.warning(f"[Tracker] WARNING: {summary}")
+
 
 # ========================================
 # НАСТРОЙКА ПРОЕКТА
@@ -35,15 +72,19 @@ from shared.tracker_events import TrackerEvents, Priority
 PROJECT_NAME = "cvgorod-hub"
 COMPONENT_NAME = "Hub"  # Компонент в очереди TGBOTCG
 
-# ========================================
-# ИНИЦИАЛИЗАЦИЯ
-# ========================================
-
-tracker = TrackerEvents(
-    project=PROJECT_NAME,
-    component=COMPONENT_NAME,
-    enabled=os.getenv("TRACKER_ENABLED", "true").lower() == "true",
-)
+# Initialize tracker (real or dummy based on availability)
+if _TRACKER_AVAILABLE:
+    tracker = TrackerEvents(
+        project=PROJECT_NAME,
+        component=COMPONENT_NAME,
+        enabled=os.getenv("TRACKER_ENABLED", "true").lower() == "true",
+    )
+else:
+    tracker = DummyTracker(
+        project=PROJECT_NAME,
+        component=COMPONENT_NAME,
+        enabled=False,  # Disabled by default without MCP
+    )
 
 
 # ========================================
