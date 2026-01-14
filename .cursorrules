@@ -14,6 +14,18 @@
 - /Users/danielbadygov/MCP/GLOBAL_RULES.md
 - /Users/danielbadygov/MCP/INFRASTRUCTURE_REGISTRY.md
 - /Users/danielbadygov/MCP/DEVELOPMENT_WORKFLOW.md
+- /Users/danielbadygov/MCP/CLOUDFLARE_RULES.md — **КРИТИЧНО для доступа из РФ!**
+
+## ☁️ Cloudflare (КРИТИЧНО для РФ!)
+> **Cloudflare Proxy и Tunnel БЛОКИРУЮТСЯ в России!**
+
+| Параметр | Правильно | Неправильно |
+|----------|-----------|-------------|
+| DNS | A → 158.160.153.14 | CNAME → tunnel |
+| Proxy | **OFF** (серое облако) | ON (оранжевое) |
+| SSL | Let's Encrypt + nginx | Cloudflare SSL |
+
+📖 Полные правила: `docs/CLOUDFLARE_RULES.md`
 
 ## Shared модули MCP (ИСПОЛЬЗОВАТЬ!)
 ```python
@@ -49,7 +61,7 @@ mcp deploy --project cvgorod-hub
 - **Порт на сервере**: 8300
 
 ### Домен
-- `cvgorod-hub.testbotgigachat.org` — Hub API
+- `cvgorod.testbotgigachat.org` — Hub API (A → IP, Proxy OFF)
 
 ## Секреты
 Секреты загружаются из `~/.secrets/`:
@@ -201,4 +213,60 @@ docker build --platform linux/amd64 -t myapp .
 ```
 
 📖 Docker правила: `~/MCP/docs/DOCKER_RULES.md`
+
+
+
+---
+
+## 🔐 СЕКРЕТЫ И CREDENTIALS (КРИТИЧНО!)
+
+> **ИНЦИДЕНТ 14.01.2026:** Хардкод пароля в docker-compose.yml
+> 📖 Полные правила: `~/MCP/docs/SECRETS_RULES.md`
+
+### НИКОГДА не хардкодить в docker-compose.yml!
+
+```yaml
+# ❌ ЗАПРЕЩЕНО:
+DATABASE_URL: postgresql://user:secret_password@host/db
+
+# ✅ ПРАВИЛЬНО:
+DATABASE_URL: ${DATABASE_URL:-postgresql://user:${POSTGRES_PASSWORD}@host/db}
+```
+
+### НИКОГДА не хардкодить в коде!
+
+```python
+# ❌ ЗАПРЕЩЕНО:
+api_key = "sk-1234567890"
+
+# ✅ ПРАВИЛЬНО:
+api_key = os.getenv("API_KEY")
+```
+
+### Секреты ТОЛЬКО из ~/.secrets/
+
+```
+~/.secrets/
+├── cloud/          # API ключи (openrouter, deepseek, fal)
+├── telegram/       # Токены ботов
+└── database/       # Пароли БД
+```
+
+### Обязательные env vars в docker-compose
+
+| Сервис | Обязательно |
+|--------|-------------|
+| С PostgreSQL | `DATABASE_URL` |
+| С Redis | `REDIS_URL` |
+| Telegram бот | `TELEGRAM_BOT_TOKEN` |
+
+### SQL JOIN — используй правильный alias!
+
+```sql
+-- ❌ НЕПРАВИЛЬНО (u.role не существует после JOIN):
+SELECT u.role FROM users u JOIN user_roles ur ON ...
+
+-- ✅ ПРАВИЛЬНО (ur.role_name из таблицы user_roles):
+SELECT ur.role_name FROM users u JOIN user_roles ur ON ...
+```
 
