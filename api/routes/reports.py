@@ -17,12 +17,15 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 @router.get("/messages/data")
 async def get_messages_report_data(
     report_date: date = Query(default=None, description="Дата отчёта (YYYY-MM-DD)"),
+    customer_id: str | None = Query(default=None, description="Фильтр по sync_id клиента (КА-XXXXXXXX)"),
+    customer_name: str | None = Query(default=None, description="Поиск по имени клиента"),
     _: str = Depends(verify_api_key),
 ) -> dict[str, Any]:
     """
     Получить данные сообщений за указанную дату для отчёта.
     
     Если дата не указана — возвращает данные за вчера.
+    Опционально можно фильтровать по customer_id или customer_name.
     """
     if report_date is None:
         report_date = date.today() - timedelta(days=1)
@@ -30,7 +33,7 @@ async def get_messages_report_data(
     start_dt = datetime.combine(report_date, datetime.min.time())
     end_dt = datetime.combine(report_date + timedelta(days=1), datetime.min.time())
     
-    # Получаем сообщения с информацией о пользователях, чатах и LLM-анализом
+    # Получаем сообщения с информацией о пользователях, чатах, клиентах и LLM-анализом
     query = """
         SELECT 
             m.id,
@@ -40,26 +43,42 @@ async def get_messages_report_data(
             m.message_type,
             m.chat_id,
             c.name as chat_name,
+            cust.name as customer_name,
+            cust.sync_id as customer_sync_id,
             m.user_id,
             COALESCE(u.username, '') as username,
             COALESCE(u.first_name, '') as first_name,
             COALESCE(u.last_name, '') as last_name,
             COALESCE(u.is_manager, false) as is_manager,
             COALESCE(ur.role_name, 'client') as user_role,
-            COALESCE(ma.intent, mp.pattern_type, 'unknown') as intent,
+            COALESCE(ma.intent, 'unknown') as intent,
             ma.sentiment as sentiment,
             ma.confidence as intent_confidence
         FROM messages m
         LEFT JOIN chats c ON m.chat_id = c.id
+        LEFT JOIN customers cust ON c.customer_id = cust.id
         LEFT JOIN users u ON m.user_id = u.id
         LEFT JOIN user_roles ur ON u.role_id = ur.id
-        LEFT JOIN message_patterns mp ON m.pattern_id = mp.id
         LEFT JOIN message_analysis ma ON m.id = ma.message_id
         WHERE m.timestamp >= $1 AND m.timestamp < $2
-        ORDER BY m.chat_id, m.timestamp ASC
     """
     
-    rows = await db.fetch(query, start_dt, end_dt)
+    params: list = [start_dt, end_dt]
+    param_idx = 3
+    
+    if customer_id:
+        query += f" AND cust.sync_id = ${param_idx}"
+        params.append(customer_id)
+        param_idx += 1
+    
+    if customer_name:
+        query += f" AND cust.name ILIKE '%' || ${param_idx} || '%'"
+        params.append(customer_name)
+        param_idx += 1
+    
+    query += " ORDER BY m.chat_id, m.timestamp ASC"
+    
+    rows = await db.fetch(query, *params)
     
     messages = [dict(row) for row in rows]
     

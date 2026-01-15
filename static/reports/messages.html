@@ -407,6 +407,7 @@
                 <option value="negative">negative</option>
                 <option value="unknown">unknown</option>
             </select>
+            <input type="text" id="customer-filter" placeholder="Клиент (имя или КА-...)" oninput="filterMessages()">
             <input type="text" id="search" placeholder="Поиск по тексту..." oninput="filterMessages()">
         </div>
         
@@ -521,6 +522,7 @@
             const roleFilter = document.getElementById('role-filter').value;
             const intentFilter = document.getElementById('intent-filter').value;
             const sentimentFilter = document.getElementById('sentiment-filter').value;
+            const customerFilter = document.getElementById('customer-filter').value.toLowerCase();
             const searchText = document.getElementById('search').value.toLowerCase();
             
             let filtered = allMessages;
@@ -535,6 +537,13 @@
             
             if (sentimentFilter !== 'all') {
                 filtered = filtered.filter(m => (m.sentiment || 'unknown') === sentimentFilter);
+            }
+            
+            if (customerFilter) {
+                filtered = filtered.filter(m => 
+                    (m.customer_name && m.customer_name.toLowerCase().includes(customerFilter)) ||
+                    (m.customer_sync_id && m.customer_sync_id.toLowerCase().includes(customerFilter))
+                );
             }
             
             if (searchText) {
@@ -552,7 +561,12 @@
             const groups = {};
             msgs.forEach(m => {
                 if (!groups[m.chat_id]) {
-                    groups[m.chat_id] = { name: m.chat_name, messages: [] };
+                    groups[m.chat_id] = { 
+                        name: m.chat_name, 
+                        customer_name: m.customer_name,
+                        customer_sync_id: m.customer_sync_id,
+                        messages: [] 
+                    };
                 }
                 groups[m.chat_id].messages.push(m);
             });
@@ -580,12 +594,20 @@
             let html = '';
             
             Object.entries(groups).forEach(([chatId, chat]) => {
+                const customerLabel = chat.customer_name 
+                    ? `<span style="color: #58a6ff; margin-left: 8px;">👤 ${escapeHtml(chat.customer_name)}</span>` 
+                    : '';
+                const syncIdLabel = chat.customer_sync_id 
+                    ? `<span style="color: #8b949e; font-size: 0.75rem; margin-left: 4px;">(${escapeHtml(chat.customer_sync_id)})</span>` 
+                    : '';
+                
                 html += `
                     <div class="chat-group">
                         <div class="chat-header" onclick="toggleChat(this)">
                             <span class="chat-name">
                                 <span>💬</span>
                                 ${escapeHtml(chat.name || 'Unknown Chat')}
+                                ${customerLabel}${syncIdLabel}
                             </span>
                             <span class="chat-meta">${chat.messages.length} сообщений</span>
                         </div>
