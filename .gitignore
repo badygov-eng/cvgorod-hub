@@ -39,3 +39,4 @@ backups/
 *.env
 !.env.example
 .playwright-mcp/
+.env.local
