@@ -162,6 +162,15 @@ def _parse_dt(value: str | None) -> datetime | None:
         return None
 
 
+def _normalize_dt(dt: datetime | None) -> datetime | None:
+    """Remove timezone info for comparison."""
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        return dt.replace(tzinfo=None)
+    return dt
+
+
 def load_cache() -> dict[str, Any]:
     if not CACHE_PATH.exists():
         return {"updated_at": None, "chats": {}}
@@ -302,7 +311,11 @@ async def analyze_expectations(
         cached = chats_cache.get(chat_key, {})
         cached_last = _parse_dt(cached.get("last_analyzed_at"))
 
-        if not force and cached_last and last_message_at and last_message_at <= cached_last:
+        # Normalize both datetimes (remove tzinfo) for comparison
+        last_msg_normalized = _normalize_dt(last_message_at)
+        cached_last_normalized = _normalize_dt(cached_last)
+
+        if not force and cached_last_normalized and last_msg_normalized and last_msg_normalized <= cached_last_normalized:
             cached["last_message_at"] = last_message_at.isoformat()
             cached["skipped"] = True
             chats_cache[chat_key] = cached

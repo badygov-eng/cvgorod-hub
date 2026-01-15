@@ -211,6 +211,28 @@
             border-radius: 6px;
             font-size: 13px;
         }
+        .expectations-controls button {
+            background: var(--accent);
+            border: none;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.2s, background 0.2s;
+        }
+        .expectations-controls button:hover {
+            opacity: 0.9;
+        }
+        .expectations-controls button:disabled {
+            background: var(--text-muted);
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        .expectations-controls button.running {
+            background: var(--warning);
+        }
         .expectations-updated {
             color: var(--text-muted);
             font-size: 0.85rem;
@@ -482,6 +504,9 @@
                         <option value="medium">Medium</option>
                         <option value="low">Low</option>
                     </select>
+                    <button id="refresh-expectations-btn" onclick="refreshExpectations()" title="Запустить анализ ожиданий (DeepSeek)">
+                        🔄 Обновить анализ
+                    </button>
                 </div>
             </div>
             <div class="expectations-list" id="expectations-list">
@@ -611,6 +636,53 @@
             } catch (error) {
                 expectationsCache = null;
                 listEl.innerHTML = '<div class="expectations-empty">Нет данных об ожиданиях</div>';
+            }
+        }
+
+        async function refreshExpectations() {
+            if (!apiKey) return;
+            const btn = document.getElementById('refresh-expectations-btn');
+            const listEl = document.getElementById('expectations-list');
+            const originalText = btn.textContent;
+
+            btn.disabled = true;
+            btn.classList.add('running');
+            btn.textContent = '⏳ Анализ...';
+            listEl.innerHTML = '<div class="expectations-empty">Запуск анализа ожиданий (DeepSeek)...</div>';
+
+            try {
+                const response = await fetch('/api/v1/chats/expectations/refresh?limit=50', {
+                    method: 'POST',
+                    headers: { 'X-API-Key': apiKey }
+                });
+
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.detail || 'Refresh failed');
+                }
+
+                const result = await response.json();
+                const stats = result.stats || {};
+                const msg = `Анализ завершён: ${stats.analyzed || 0} новых, ${stats.skipped || 0} пропущено`;
+                
+                btn.textContent = '✅ Готово';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.classList.remove('running');
+                    btn.disabled = false;
+                }, 2000);
+
+                // Reload expectations data
+                await loadExpectations();
+                alert(msg);
+            } catch (error) {
+                btn.textContent = '❌ Ошибка';
+                btn.classList.remove('running');
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }, 2000);
+                listEl.innerHTML = `<div class="expectations-empty">Ошибка: ${error.message}</div>`;
             }
         }
 
