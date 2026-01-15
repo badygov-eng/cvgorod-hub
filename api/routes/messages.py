@@ -33,6 +33,7 @@ class MessageResponse(BaseModel):
     is_automatic: bool = False
     intent: Optional[str] = None
     intent_confidence: Optional[float] = None
+    sentiment: Optional[str] = None
     is_reply: bool = False
     reply_to_message_id: Optional[int] = None
 
@@ -101,9 +102,16 @@ async def get_messages_stats_by_role(
     if days is not None:
         since = datetime.utcnow() - timedelta(days=days)
     
+    # В текущей схеме messages.role может отсутствовать (миграции могли не быть применены),
+    # поэтому роль вычисляем по users/user_roles.
     query = """
         SELECT
-            COALESCE(m.role, ur.role_name, 'UNKNOWN') as role,
+            CASE
+                WHEN COALESCE(ur.is_bot, FALSE) = TRUE THEN 'BOT'
+                WHEN COALESCE(ur.role_name, '') = 'director' THEN 'DIRECTOR'
+                WHEN COALESCE(ur.role_name, '') = 'manager' OR COALESCE(u.is_manager, FALSE) = TRUE THEN 'MANAGER'
+                ELSE 'CLIENT'
+            END as role,
             COUNT(*) as message_count,
             COUNT(DISTINCT m.chat_id) as active_chats,
             COUNT(DISTINCT m.user_id) as active_users
@@ -129,7 +137,16 @@ async def get_messages_stats_by_role(
         params.append(until)
         param_idx += 1
     
-    query += " GROUP BY COALESCE(m.role, ur.role_name, 'UNKNOWN') ORDER BY message_count DESC"
+    query += """
+        GROUP BY
+            CASE
+                WHEN COALESCE(ur.is_bot, FALSE) = TRUE THEN 'BOT'
+                WHEN COALESCE(ur.role_name, '') = 'director' THEN 'DIRECTOR'
+                WHEN COALESCE(ur.role_name, '') = 'manager' OR COALESCE(u.is_manager, FALSE) = TRUE THEN 'MANAGER'
+                ELSE 'CLIENT'
+            END
+        ORDER BY message_count DESC
+    """
     
     rows = await db.fetch(query, *params)
     stats = {
@@ -247,11 +264,16 @@ async def get_messages_report_data(
             COALESCE(u.first_name, '') as first_name,
             COALESCE(u.last_name, '') as last_name,
             COALESCE(u.is_manager, false) as is_manager,
-            COALESCE(ur.role_name, 'client') as user_role
+            COALESCE(ur.role_name, 'client') as user_role,
+            COALESCE(ma.intent, mp.pattern_type, 'unknown') as intent,
+            ma.sentiment as sentiment,
+            ma.confidence as intent_confidence
         FROM messages m
         LEFT JOIN chats c ON m.chat_id = c.id
         LEFT JOIN users u ON m.user_id = u.id
         LEFT JOIN user_roles ur ON u.role_id = ur.id
+        LEFT JOIN message_patterns mp ON m.pattern_id = mp.id
+        LEFT JOIN message_analysis ma ON m.id = ma.message_id
         WHERE m.timestamp >= $1 AND m.timestamp < $2
         ORDER BY m.chat_id, m.timestamp ASC
     """

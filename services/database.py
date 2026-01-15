@@ -451,15 +451,16 @@ class Database:
         Returns:
             Список user_id не-клиентов
         """
-        # Используем UPPER для case-insensitive сравнения ролей
-        # LEFT JOIN чтобы не падать если user_roles не существует
+        # ВАЖНО: в текущей схеме users.role может отсутствовать (миграции могут не быть применены),
+        # поэтому НЕ опираемся на users.role. Используем user_roles + is_manager.
         query = """
             SELECT DISTINCT u.id
             FROM users u
             LEFT JOIN user_roles ur ON u.role_id = ur.id
             WHERE ur.exclude_from_analytics = TRUE
                 OR u.is_manager = TRUE
-                OR UPPER(COALESCE(u.role, '')) IN ('MANAGER', 'DIRECTOR', 'BOT', 'ADMIN')
+                OR COALESCE(ur.is_staff, FALSE) = TRUE
+                OR COALESCE(ur.is_bot, FALSE) = TRUE
         """
         try:
             async with self.acquire() as conn:
@@ -590,17 +591,29 @@ class Database:
             params.append(user_id)
             param_idx += 1
 
+        # Роль и интент в текущей БД могут храниться НЕ в messages (миграции могут быть не применены),
+        # поэтому вычисляем роль/интент через users/user_roles + message_patterns + message_analysis.
+        role_expr = """
+            CASE
+                WHEN COALESCE(ur.is_bot, FALSE) = TRUE THEN 'BOT'
+                WHEN COALESCE(ur.role_name, '') = 'director' THEN 'DIRECTOR'
+                WHEN COALESCE(ur.role_name, '') = 'manager' OR COALESCE(u.is_manager, FALSE) = TRUE THEN 'MANAGER'
+                ELSE 'CLIENT'
+            END
+        """
+        intent_expr = "COALESCE(ma.intent, mp.pattern_type, 'unknown')"
+
         if role is not None:
-            # Case-insensitive сравнение ролей
-            conditions.append(f"UPPER(COALESCE(m.role, '')) = ${param_idx}")
+            conditions.append(f"UPPER({role_expr}) = ${param_idx}")
             params.append(role.upper())
             param_idx += 1
 
         if exclude_automatic:
-            conditions.append("(m.is_automatic = FALSE OR m.is_automatic IS NULL)")
+            # Автоматические сообщения трактуем как BOT по роли пользователя
+            conditions.append(f"UPPER({role_expr}) != 'BOT'")
 
         if has_intent is not None:
-            conditions.append(f"m.intent = ${param_idx}")
+            conditions.append(f"{intent_expr} = ${param_idx}")
             params.append(has_intent)
             param_idx += 1
 
@@ -633,15 +646,27 @@ class Database:
 
         query = f"""
             SELECT
-                m.*,
+                m.id,
+                m.chat_id,
+                m.user_id,
+                m.text,
+                m.message_type,
+                m.timestamp,
+                m.reply_to_message_id,
                 u.username,
                 u.first_name,
-                COALESCE(m.role, ur.role_name) as role,
-                c.name as chat_name
+                c.name as chat_name,
+                {role_expr} as role,
+                ({role_expr} = 'BOT') as is_automatic,
+                {intent_expr} as intent,
+                ma.sentiment as sentiment,
+                ma.confidence as intent_confidence
             FROM messages m
             LEFT JOIN users u ON m.user_id = u.id
             LEFT JOIN user_roles ur ON u.role_id = ur.id
             LEFT JOIN chats c ON m.chat_id = c.id
+            LEFT JOIN message_patterns mp ON m.pattern_id = mp.id
+            LEFT JOIN message_analysis ma ON m.id = ma.message_id
             WHERE {where_clause}
             ORDER BY m.timestamp DESC
             LIMIT ${param_idx} OFFSET ${param_idx + 1}
@@ -1033,30 +1058,62 @@ class Database:
         since = datetime.utcnow() - timedelta(hours=hours)
         response_window_hours = hours  # Окно для проверки ответа менеджера
         
+        # В текущей схеме messages.role может отсутствовать, поэтому роль вычисляем через users/user_roles.
+        # Вопрос определяем так:
+        # - message_analysis.intent='question' (если есть)
+        # - или message_patterns.pattern_type='question' (DB классификация)
+        # - или эвристика по тексту (fallback)
         query = """
+            WITH enriched AS (
+                SELECT
+                    m.id as message_id,
+                    m.chat_id,
+                    c.name as chat_name,
+                    m.user_id,
+                    u.username,
+                    u.first_name,
+                    m.text as question_text,
+                    m.timestamp as question_time,
+                    CASE
+                        WHEN COALESCE(ur.is_bot, FALSE) = TRUE THEN 'BOT'
+                        WHEN COALESCE(ur.role_name, '') = 'director' THEN 'DIRECTOR'
+                        WHEN COALESCE(ur.role_name, '') = 'manager' OR COALESCE(u.is_manager, FALSE) = TRUE THEN 'MANAGER'
+                        ELSE 'CLIENT'
+                    END as sender_role,
+                    COALESCE(ma.intent, mp.pattern_type, 'unknown') as intent
+                FROM messages m
+                LEFT JOIN chats c ON m.chat_id = c.id
+                LEFT JOIN users u ON m.user_id = u.id
+                LEFT JOIN user_roles ur ON u.role_id = ur.id
+                LEFT JOIN message_patterns mp ON m.pattern_id = mp.id
+                LEFT JOIN message_analysis ma ON m.id = ma.message_id
+                WHERE m.timestamp > $2
+                    AND m.text IS NOT NULL AND m.text != ''
+            )
             SELECT
-                m.id as message_id,
-                m.chat_id,
-                c.name as chat_name,
-                m.user_id,
-                u.username,
-                u.first_name,
-                m.text as question_text,
-                m.timestamp as question_time
-            FROM messages m
-            LEFT JOIN chats c ON m.chat_id = c.id
-            LEFT JOIN users u ON m.user_id = u.id
-            WHERE UPPER(m.role) = 'CLIENT'
-                AND (m.text LIKE '%?%' OR LOWER(m.text) LIKE any(ARRAY['%есть ли%', '%сколько%', '%когда%', '%можно ли%', '%подскажите%']))
-                AND NOT EXISTS (
-                    SELECT 1 FROM messages m2
-                    WHERE m2.chat_id = m.chat_id
-                        AND m2.timestamp > m.timestamp
-                        AND m2.timestamp < m.timestamp + INTERVAL '1 hour' * $1
-                        AND UPPER(m2.role) = 'MANAGER'
+                e.message_id,
+                e.chat_id,
+                e.chat_name,
+                e.user_id,
+                e.username,
+                e.first_name,
+                e.question_text,
+                e.question_time
+            FROM enriched e
+            WHERE e.sender_role = 'CLIENT'
+                AND (
+                    e.intent = 'question'
+                    OR (e.question_text LIKE '%?%' OR LOWER(e.question_text) LIKE any(ARRAY['%есть ли%', '%сколько%', '%когда%', '%можно ли%', '%подскажите%']))
                 )
-                AND m.timestamp > $2
-            ORDER BY m.timestamp DESC
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM enriched e2
+                    WHERE e2.chat_id = e.chat_id
+                        AND e2.question_time > e.question_time
+                        AND e2.question_time < e.question_time + INTERVAL '1 hour' * $1
+                        AND e2.sender_role = 'MANAGER'
+                )
+            ORDER BY e.question_time DESC
             LIMIT $3
         """
         rows = await db.fetch(query, response_window_hours, since, limit)

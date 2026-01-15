@@ -272,6 +272,26 @@
         .role-badge.client { background: #1a3d1a; color: #3fb950; }
         .role-badge.manager { background: #3d1a3d; color: #a371f7; }
         
+        .intent-badge {
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            margin-left: 6px;
+            background: #222d3a;
+            color: var(--accent);
+        }
+        
+        .sentiment-badge {
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            margin-left: 6px;
+        }
+        .sentiment-positive { background: #1a3d1a; color: #3fb950; }
+        .sentiment-neutral { background: #2a2a2a; color: #c9d1d9; }
+        .sentiment-negative { background: #3a1a1a; color: #f85149; }
+        .sentiment-unknown { background: #2a2a2a; color: #8b949e; }
+        
         .message-text {
             white-space: pre-wrap;
             word-break: break-word;
@@ -369,6 +389,23 @@
                 <option value="all">Все сообщения</option>
                 <option value="client">Только клиенты</option>
                 <option value="assistant_bot">Только бот</option>
+            </select>
+            <select id="intent-filter" onchange="filterMessages()">
+                <option value="all">Все интенты</option>
+                <option value="question">question</option>
+                <option value="order">order</option>
+                <option value="complaint">complaint</option>
+                <option value="interest">interest</option>
+                <option value="confirmation">confirmation</option>
+                <option value="other">other</option>
+                <option value="unknown">unknown</option>
+            </select>
+            <select id="sentiment-filter" onchange="filterMessages()">
+                <option value="all">Весь сентимент</option>
+                <option value="positive">positive</option>
+                <option value="neutral">neutral</option>
+                <option value="negative">negative</option>
+                <option value="unknown">unknown</option>
             </select>
             <input type="text" id="search" placeholder="Поиск по тексту..." oninput="filterMessages()">
         </div>
@@ -482,12 +519,22 @@
         
         function filterMessages() {
             const roleFilter = document.getElementById('role-filter').value;
+            const intentFilter = document.getElementById('intent-filter').value;
+            const sentimentFilter = document.getElementById('sentiment-filter').value;
             const searchText = document.getElementById('search').value.toLowerCase();
             
             let filtered = allMessages;
             
             if (roleFilter !== 'all') {
                 filtered = filtered.filter(m => m.user_role === roleFilter);
+            }
+            
+            if (intentFilter !== 'all') {
+                filtered = filtered.filter(m => (m.intent || 'unknown') === intentFilter);
+            }
+            
+            if (sentimentFilter !== 'all') {
+                filtered = filtered.filter(m => (m.sentiment || 'unknown') === sentimentFilter);
             }
             
             if (searchText) {
@@ -549,6 +596,9 @@
                     const roleClass = getRoleClass(m.user_role);
                     const senderName = (m.first_name || '') + (m.last_name ? ' ' + m.last_name : '');
                     const username = m.username ? `@${m.username}` : '';
+                    const intent = m.intent || 'unknown';
+                    const sentiment = m.sentiment || 'unknown';
+                    const sentimentClass = `sentiment-${sentiment}`;
                     
                     html += `
                         <div class="message ${roleClass}">
@@ -557,6 +607,8 @@
                                     ${escapeHtml(senderName || 'Unknown')}
                                     ${username ? `<span style="opacity:0.7">${escapeHtml(username)}</span>` : ''}
                                     <span class="role-badge ${roleClass}">${m.user_role}</span>
+                                    <span class="intent-badge">${escapeHtml(intent)}</span>
+                                    <span class="sentiment-badge ${sentimentClass}">${escapeHtml(sentiment)}</span>
                                 </span>
                                 <span class="time">${m.time}</span>
                             </div>

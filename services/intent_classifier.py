@@ -215,6 +215,13 @@ class IntentClassifier:
         Returns:
             ID записи в message_analysis
         """
+        existing_id = await db.fetchval(
+            "SELECT id FROM message_analysis WHERE message_id = $1",
+            analysis.message_id,
+        )
+        if existing_id:
+            return int(existing_id)
+
         result = await db.execute(
             """
             INSERT INTO message_analysis (
@@ -227,7 +234,7 @@ class IntentClassifier:
             analysis.message_id,
             analysis.intent,
             analysis.sentiment,
-            str(analysis.entities),
+            json.dumps(analysis.entities, ensure_ascii=False),
             analysis.confidence,
             analysis.model_used,
             analysis.tokens_used,
