@@ -80,7 +80,20 @@ MANAGERS: list[UserInfo] = [
         role=UserRole.MANAGER,
         name="Сеймур"
     ),
-    # Alan_191 - добавить user_id когда появится в системе
+    UserInfo(
+        user_id=7750251679,
+        username="Alan_191",
+        phone=None,
+        role=UserRole.MANAGER,
+        name="Alan (Шамхал)"
+    ),
+    UserInfo(
+        user_id=6395960386,
+        username=None,  # Шерали не имеет username
+        phone=None,
+        role=UserRole.MANAGER,
+        name="Шерали Махсудов"
+    ),
 ]
 
 # Боты (автоматические рассылки, исключаем из аналитики клиентов)
@@ -92,13 +105,7 @@ BOTS: list[UserInfo] = [
         role=UserRole.BOT,
         name="Бот рассылки"
     ),
-    UserInfo(
-        user_id=6395960386,
-        username="cvgorodassistent_bot",
-        phone=None,
-        role=UserRole.BOT,
-        name="AI Ассистент"
-    ),
+    # AI Ассистент бот (если появится отдельный)
 ]
 
 
@@ -343,7 +350,7 @@ async def async_is_client(user_id: int) -> bool:
 # ==================== ЭКСПОРТ ====================
 
 # Обратная совместимость с MANAGER_NAMES в других модулях
-MANAGER_NAMES: set[str] = {"джафар", "сеймур", "polad", "alan"}
+MANAGER_NAMES: set[str] = {"джафар", "сеймур", "polad", "alan", "шамхал", "шерали"}
 MANAGER_IDS: set[int] = get_all_staff_ids()
 BOT_IDS: set[int] = get_all_bot_ids()
 DIRECTOR_IDS: set[int] = get_director_ids()
