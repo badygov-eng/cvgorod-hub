@@ -52,6 +52,9 @@ services:
       - TELEGRAM_BOT_TOKEN
       - DATABASE_URL=postgresql://cvgorod:cvgorod_secret_2024@postgres:5432/cvgorod_hub
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      # Yandex SpeechKit для расшифровки голосовых
+      - YANDEX_CLOUD_API_KEY=${YANDEX_CLOUD_API_KEY:-}
+      - YANDEX_FOLDER_ID=${YANDEX_FOLDER_ID:-}
     volumes:
       - ./bot:/app/bot:ro
       - ./services:/app/services:ro
