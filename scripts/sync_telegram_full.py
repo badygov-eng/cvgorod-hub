@@ -169,6 +169,36 @@ async def main():
                 last_name = getattr(msg.sender, 'last_name', None) if msg.sender else None
                 msg_date = to_timestamp(msg.date)
                 
+                # Определяем тип сообщения и текст
+                msg_type = 'text'
+                msg_text = msg.text
+                
+                if msg.voice:
+                    msg_type = 'voice'
+                    msg_text = '[Голосовое сообщение]'
+                elif msg.video_note:
+                    msg_type = 'video_note'
+                    msg_text = '[Видеосообщение]'
+                elif msg.sticker:
+                    msg_type = 'sticker'
+                    msg_text = f'[Стикер: {msg.sticker.emoji or ""}]'
+                elif msg.photo:
+                    msg_type = 'photo'
+                    msg_text = msg.message or '[Фото]'  # message = caption для медиа
+                elif msg.video:
+                    msg_type = 'video'
+                    msg_text = msg.message or '[Видео]'
+                elif msg.document:
+                    msg_type = 'document'
+                    doc_name = getattr(msg.document, 'file_name', '') or ''
+                    msg_text = msg.message or f'[Документ: {doc_name}]'
+                elif msg.audio:
+                    msg_type = 'audio'
+                    msg_text = msg.message or '[Аудио]'
+                elif not msg_text:
+                    # Пропускаем сообщения без контента
+                    continue
+                
                 async with pool.acquire() as conn:
                     await conn.execute("""
                         INSERT INTO users (id, username, first_name, last_name)
@@ -179,10 +209,10 @@ async def main():
                     
                     result = await conn.fetchval("""
                         INSERT INTO messages (telegram_message_id, chat_id, user_id, text, message_type, timestamp)
-                        VALUES ($1, $2, $3, $4, 'text', $5)
+                        VALUES ($1, $2, $3, $4, $5, $6)
                         ON CONFLICT (chat_id, telegram_message_id) DO NOTHING
                         RETURNING id
-                    """, msg.id, db_chat_id, user_id, msg.text, msg_date)
+                    """, msg.id, db_chat_id, user_id, msg_text, msg_type, msg_date)
                     
                     if result:
                         saved += 1

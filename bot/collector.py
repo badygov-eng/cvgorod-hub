@@ -90,9 +90,19 @@ class MessageCollector:
                 logger.info("Skipping: message from bot")
                 return
 
-            # Пропускаем системные сообщения
-            if not update.message or not update.message.text:
-                logger.info("Skipping: no message or no text")
+            # Пропускаем системные сообщения (но не голосовые!)
+            if not update.message:
+                logger.info("Skipping: no message")
+                return
+            
+            # Проверяем что есть контент (текст, caption или голосовое)
+            has_content = (
+                update.message.text 
+                or update.message.caption 
+                or update.message.voice
+            )
+            if not has_content:
+                logger.info("Skipping: no text, caption or voice")
                 return
 
             message_id = update.message.message_id
@@ -363,19 +373,24 @@ class MessageCollector:
         """
         Регистрирует обработчики в Application.
 
-        Использует MessageHandler с фильтром TEXT
-        для перехвата всех текстовых сообщений в группах.
+        Использует MessageHandler с фильтрами для перехвата:
+        - Текстовых сообщений
+        - Голосовых сообщений (voice)
+        - Сообщений с caption (фото/видео с подписью)
         """
         from telegram.ext import MessageHandler, filters
 
-        # Добавляем handler для всех текстовых сообщений
-        handler = MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            self.handle_update,
+        # Фильтр для всех типов контента которые мы обрабатываем
+        content_filter = (
+            (filters.TEXT & ~filters.COMMAND)  # Текст (не команды)
+            | filters.VOICE                     # Голосовые сообщения
+            | filters.CAPTION                   # Сообщения с подписью
         )
+        
+        handler = MessageHandler(content_filter, self.handle_update)
         application.add_handler(handler)
 
-        logger.info("MessageCollector handlers registered")
+        logger.info("MessageCollector handlers registered (TEXT + VOICE + CAPTION)")
 
 
 async def main() -> None:
