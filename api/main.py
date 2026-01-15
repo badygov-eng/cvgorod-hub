@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from api.routes import clients, intents, messages, reports, send
+from api.routes import clients, expectations, intents, messages, reports, send
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -93,6 +93,7 @@ app.include_router(reports, prefix="/api/v1")  # reports first for /messages/dat
 app.include_router(clients, prefix="/api/v1")
 app.include_router(intents, prefix="/api/v1")
 app.include_router(send, prefix="/api/v1")
+app.include_router(expectations, prefix="/api/v1")
 app.include_router(messages, prefix="/api/v1")
 
 

@@ -12,7 +12,11 @@ COPY api/ ./api/
 COPY bot/ ./bot/
 COPY services/ ./services/
 COPY config/ ./config/
+COPY scripts/ ./scripts/
 COPY main.py .
+
+# Создание директории для кэша ожиданий
+RUN mkdir -p /app/data
 
 EXPOSE 8000
 
