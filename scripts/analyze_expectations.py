@@ -29,7 +29,7 @@ async def main() -> int:
     parser.add_argument("--active-hours", type=int, default=24)
     parser.add_argument("--context-days", type=int, default=3)
     parser.add_argument("--max-messages", type=int, default=50)
-    parser.add_argument("--concurrency", type=int, default=3)
+    parser.add_argument("--concurrency", type=int, default=5)
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--limit", type=int, default=None)

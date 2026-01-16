@@ -37,24 +37,24 @@ class DeepSeekExpectationAnalyzer:
     )
 
     USER_PROMPT = """
-Ты аналитик цветочной компании CVGorod. Проанализируй переписку клиента.
+Ты аналитик цветочной компании CVGorod.
 
-Контекст бизнеса:
-- CVGorod — оптовая цветочная компания
-- Клиенты — владельцы цветочных магазинов и салонов
-- Бот шлёт напоминания о предзаказах
-- Менеджеры обрабатывают заказы и отвечают на вопросы
+Роли: MANAGER/BOT = наши сотрудники, CLIENT = клиент.
 
-Переписка с клиентом "{customer_label}":
+ПРАВИЛО: Смотри на САМОЕ ПОСЛЕДНЕЕ сообщение по времени!
+- Если последнее от MANAGER/BOT → "Ожидаем от клиента ответ на [суть вопроса]"
+- Если последнее от CLIENT → "Клиент ожидает [что именно]"
+
+Переписка "{customer_label}":
 ---
 {conversation}
 ---
 
-Верни JSON:
+JSON:
 {{
-  "expectation": "Что клиент ожидает от нас (кратко)",
+  "expectation": "Ожидаем от клиента... / Клиент ожидает...",
   "priority": "high|medium|low",
-  "actions": ["Ровно 3 коротких действия для менеджера"]
+  "actions": ["3 действия для менеджера"]
 }}
 """
 
@@ -259,7 +259,13 @@ def _format_conversation(messages: list[dict[str, Any]]) -> str:
         if not name:
             name = role
         text = (msg.get("text") or "").strip()
-        lines.append(f"[{role}] {name}: {text}")
+        # Добавляем timestamp для понимания хронологии
+        ts = msg.get("timestamp")
+        if ts:
+            ts_str = ts.strftime("%d.%m %H:%M")
+            lines.append(f"[{ts_str}] [{role}] {name}: {text}")
+        else:
+            lines.append(f"[{role}] {name}: {text}")
     return "\n".join(lines)
 
 
@@ -316,7 +322,7 @@ async def analyze_expectations(
         cached_last_normalized = _normalize_dt(cached_last)
 
         if not force and cached_last_normalized and last_msg_normalized and last_msg_normalized <= cached_last_normalized:
-            cached["last_message_at"] = last_message_at.isoformat()
+            cached["last_message_at"] = last_message_at.isoformat() if last_message_at else None
             cached["skipped"] = True
             chats_cache[chat_key] = cached
             skipped += 1
@@ -344,6 +350,19 @@ async def analyze_expectations(
         async with semaphore:
             analysis, tokens_used = await analyzer.analyze(customer_label, conversation)
 
+        # Пост-обработка: корректируем направление ожидания по последнему сообщению
+        expectation = analysis.get("expectation", "")
+        if context_messages:
+            last_msg_role = context_messages[-1].get("role", "CLIENT")
+            if last_msg_role in ("MANAGER", "BOT", "DIRECTOR"):
+                # Последнее от нас - ждём ответа от клиента
+                if not expectation.startswith("Ожидаем от клиента"):
+                    # Убираем "Клиент ожидает" и заменяем на "Ожидаем от клиента ответ на"
+                    if expectation.startswith("Клиент ожидает"):
+                        expectation = "Ожидаем от клиента ответ: " + expectation[14:].strip()
+                    else:
+                        expectation = "Ожидаем от клиента ответ: " + expectation
+
         last_analyzed_at = datetime.utcnow().isoformat()
 
         cached.update(
@@ -351,7 +370,7 @@ async def analyze_expectations(
                 "chat_name": chat.get("chat_name"),
                 "customer_name": chat.get("customer_name"),
                 "customer_sync_id": chat.get("customer_sync_id"),
-                "expectation": analysis.get("expectation", ""),
+                "expectation": expectation,
                 "priority": analysis.get("priority", "medium"),
                 "actions": analysis.get("actions", [])[:3],
                 "last_client_message": _last_client_message(context_messages),

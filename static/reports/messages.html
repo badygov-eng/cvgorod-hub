@@ -651,7 +651,7 @@
             listEl.innerHTML = '<div class="expectations-empty">Запуск анализа ожиданий (DeepSeek)...</div>';
 
             try {
-                const response = await fetch('/api/v1/chats/expectations/refresh?limit=50', {
+                const response = await fetch('/api/v1/chats/expectations/refresh', {
                     method: 'POST',
                     headers: { 'X-API-Key': apiKey }
                 });
@@ -703,6 +703,11 @@
             const entries = Object.entries(expectationsCache.chats)
                 .map(([chatId, data]) => ({ chatId, data }))
                 .filter(item => {
+                    // Показываем только чаты где КЛИЕНТ ожидает от нас
+                    const exp = (item.data.expectation || '').toLowerCase();
+                    if (!exp.startsWith('клиент ожидает') && !exp.startsWith('клиент хочет')) {
+                        return false;
+                    }
                     if (priorityFilter === 'all') return true;
                     return (item.data.priority || 'medium') === priorityFilter;
                 })
