@@ -23,6 +23,7 @@ MIGRATIONS=(
     "migrate_add_sentiment.sql"
     "migrate_add_customers.sql"
     "migrate_add_unique_message_index.sql"
+    "migrate_add_cvgorod_chat_id.sql"
 )
 
 for migration in "${MIGRATIONS[@]}"; do

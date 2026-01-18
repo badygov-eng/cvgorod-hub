@@ -11,7 +11,6 @@ Message Collector Service для CVGorod.
 - Интеграция с Yandex Tracker для логирования событий
 """
 
-import asyncio
 import contextlib
 import logging
 from datetime import datetime
@@ -21,7 +20,6 @@ from telegram import Update
 from telegram.ext import Application, ContextTypes
 
 from services.database import db
-from services.intent_classifier import intent_classifier
 from services.message_collector import (
     message_collector,  # Импортируем глобальный экземпляр, как в старом проекте
 )
@@ -92,19 +90,9 @@ class MessageCollector:
                 logger.info("Skipping: message from bot")
                 return
 
-            # Пропускаем системные сообщения (но не голосовые!)
-            if not update.message:
-                logger.info("Skipping: no message")
-                return
-            
-            # Проверяем что есть контент (текст, caption или голосовое)
-            has_content = (
-                update.message.text 
-                or update.message.caption 
-                or update.message.voice
-            )
-            if not has_content:
-                logger.info("Skipping: no text, caption or voice")
+            # Пропускаем системные сообщения
+            if not update.message or not update.message.text:
+                logger.info("Skipping: no message or no text")
                 return
 
             message_id = update.message.message_id
@@ -330,7 +318,7 @@ class MessageCollector:
                 pattern_id = await db.classify_message(data["text"], data["user_id"])
 
             # Сохраняем сообщение
-            message_db_id = await db.fetchval(
+            await db.execute(
                 """
                 INSERT INTO messages (
                     telegram_message_id, chat_id, user_id, text,
@@ -348,11 +336,6 @@ class MessageCollector:
                 data["timestamp"],
                 pattern_id,
             )
-
-            if message_db_id and data.get("text") and not data.get("is_bot") and not data.get("is_staff"):
-                asyncio.create_task(
-                    self._analyze_message(int(message_db_id), data["text"])
-                )
 
             # Логируем успешную операцию в Tracker
             duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
@@ -376,36 +359,23 @@ class MessageCollector:
             logger.error(f"Error saving to database: {e}", exc_info=True)
             raise
 
-    async def _analyze_message(self, message_id: int, text: str) -> None:
-        """LLM анализ интента и сентимента для клиентского сообщения."""
-        try:
-            analysis = await intent_classifier.classify(message_id, text)
-            await intent_classifier.save_analysis(analysis)
-        except Exception as e:
-            logger.error(f"Intent analysis failed for message {message_id}: {e}", exc_info=True)
-
     def register_handlers(self, application: Application) -> None:
         """
         Регистрирует обработчики в Application.
 
-        Использует MessageHandler с фильтрами для перехвата:
-        - Текстовых сообщений
-        - Голосовых сообщений (voice)
-        - Сообщений с caption (фото/видео с подписью)
+        Использует MessageHandler с фильтром TEXT
+        для перехвата всех текстовых сообщений в группах.
         """
         from telegram.ext import MessageHandler, filters
 
-        # Фильтр для всех типов контента которые мы обрабатываем
-        content_filter = (
-            (filters.TEXT & ~filters.COMMAND)  # Текст (не команды)
-            | filters.VOICE                     # Голосовые сообщения
-            | filters.CAPTION                   # Сообщения с подписью
+        # Добавляем handler для всех текстовых сообщений
+        handler = MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            self.handle_update,
         )
-        
-        handler = MessageHandler(content_filter, self.handle_update)
         application.add_handler(handler)
 
-        logger.info("MessageCollector handlers registered (TEXT + VOICE + CAPTION)")
+        logger.info("MessageCollector handlers registered")
 
 
 async def main() -> None:

@@ -33,7 +33,6 @@ class MessageResponse(BaseModel):
     is_automatic: bool = False
     intent: Optional[str] = None
     intent_confidence: Optional[float] = None
-    sentiment: Optional[str] = None
     is_reply: bool = False
     reply_to_message_id: Optional[int] = None
 
@@ -264,16 +263,11 @@ async def get_messages_report_data(
             COALESCE(u.first_name, '') as first_name,
             COALESCE(u.last_name, '') as last_name,
             COALESCE(u.is_manager, false) as is_manager,
-            COALESCE(ur.role_name, 'client') as user_role,
-            COALESCE(ma.intent, mp.pattern_type, 'unknown') as intent,
-            ma.sentiment as sentiment,
-            ma.confidence as intent_confidence
+            COALESCE(ur.role_name, 'client') as user_role
         FROM messages m
         LEFT JOIN chats c ON m.chat_id = c.id
         LEFT JOIN users u ON m.user_id = u.id
         LEFT JOIN user_roles ur ON u.role_id = ur.id
-        LEFT JOIN message_patterns mp ON m.pattern_id = mp.id
-        LEFT JOIN message_analysis ma ON m.id = ma.message_id
         WHERE m.timestamp >= $1 AND m.timestamp < $2
         ORDER BY m.chat_id, m.timestamp ASC
     """

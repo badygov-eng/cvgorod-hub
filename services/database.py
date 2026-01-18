@@ -659,7 +659,6 @@ class Database:
                 {role_expr} as role,
                 ({role_expr} = 'BOT') as is_automatic,
                 {intent_expr} as intent,
-                ma.sentiment as sentiment,
                 ma.confidence as intent_confidence
             FROM messages m
             LEFT JOIN users u ON m.user_id = u.id

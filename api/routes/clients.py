@@ -389,6 +389,173 @@ async def get_active_clients(
 # CHATS ENDPOINTS
 # ============================================================
 
+class ChatResponse(BaseModel):
+    """Ответ с информацией о чате."""
+    id: int  # telegram_chat_id
+    cvgorod_chat_id: Optional[int] = None
+    name: Optional[str] = None
+    chat_type: str = "group"
+    is_active: bool = True
+    members_count: int = 0
+    messages_count: int = 0
+    last_message_at: Optional[str] = None
+    customer_id: Optional[int] = None
+    customer_name: Optional[str] = None
+    customer_sync_id: Optional[str] = None
+
+
+class ChatsListResponse(BaseModel):
+    """Ответ со списком чатов."""
+    count: int
+    total: int
+    chats: list[ChatResponse]
+
+
+@router.get("/chats", response_model=ChatsListResponse)
+async def list_chats(
+    api_key: str = Depends(verify_api_key),
+    cvgorod_chat_id: Optional[int] = Query(None, description="Фильтр по cvgorod_chat_id"),
+    has_cvgorod_id: Optional[bool] = Query(None, description="Только с/без cvgorod_chat_id"),
+    is_active: bool = Query(True, description="Только активные чаты"),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    """
+    Получение списка чатов с информацией о cvgorod_chat_id.
+    
+    Фильтры:
+    - cvgorod_chat_id: поиск по конкретному ID из CVGorod API
+    - has_cvgorod_id: True - только с привязкой, False - только без
+    - is_active: фильтр по активности
+    """
+    # Базовый запрос
+    query = """
+        SELECT 
+            c.id,
+            c.cvgorod_chat_id,
+            c.name,
+            c.chat_type,
+            c.is_active,
+            c.members_count,
+            c.customer_id,
+            cu.name as customer_name,
+            cu.sync_id as customer_sync_id,
+            COUNT(m.id) as messages_count,
+            MAX(m.timestamp) as last_message_at
+        FROM chats c
+        LEFT JOIN customers cu ON c.customer_id = cu.id
+        LEFT JOIN messages m ON c.id = m.chat_id
+        WHERE 1=1
+    """
+    params = []
+    param_idx = 1
+    
+    if cvgorod_chat_id is not None:
+        query += f" AND c.cvgorod_chat_id = ${param_idx}"
+        params.append(cvgorod_chat_id)
+        param_idx += 1
+    
+    if has_cvgorod_id is not None:
+        if has_cvgorod_id:
+            query += " AND c.cvgorod_chat_id IS NOT NULL"
+        else:
+            query += " AND c.cvgorod_chat_id IS NULL"
+    
+    if is_active:
+        query += " AND c.is_active = true"
+    
+    query += """
+        GROUP BY c.id, c.cvgorod_chat_id, c.name, c.chat_type, c.is_active, 
+                 c.members_count, c.customer_id, cu.name, cu.sync_id
+        ORDER BY c.name
+    """
+    
+    # Сначала получаем общее количество
+    count_query = f"""
+        SELECT COUNT(*) FROM chats c WHERE 1=1
+        {' AND c.cvgorod_chat_id = $1' if cvgorod_chat_id is not None else ''}
+        {' AND c.cvgorod_chat_id IS NOT NULL' if has_cvgorod_id is True else ''}
+        {' AND c.cvgorod_chat_id IS NULL' if has_cvgorod_id is False else ''}
+        {' AND c.is_active = true' if is_active else ''}
+    """
+    total = await db.fetchval(count_query, *params[:1] if cvgorod_chat_id else [])
+    
+    # Добавляем пагинацию
+    query += f" LIMIT ${param_idx} OFFSET ${param_idx + 1}"
+    params.extend([limit, offset])
+    
+    rows = await db.fetch(query, *params)
+    
+    chats = []
+    for row in rows:
+        chats.append(ChatResponse(
+            id=row["id"],
+            cvgorod_chat_id=row["cvgorod_chat_id"],
+            name=row["name"],
+            chat_type=row["chat_type"] or "group",
+            is_active=row["is_active"],
+            members_count=row["members_count"] or 0,
+            messages_count=row["messages_count"] or 0,
+            last_message_at=row["last_message_at"].isoformat() if row["last_message_at"] else None,
+            customer_id=row["customer_id"],
+            customer_name=row["customer_name"],
+            customer_sync_id=row["customer_sync_id"],
+        ))
+    
+    return ChatsListResponse(
+        count=len(chats),
+        total=total or 0,
+        chats=chats,
+    )
+
+
+@router.get("/chats/{chat_id}", response_model=ChatResponse)
+async def get_chat(
+    chat_id: int,
+    api_key: str = Depends(verify_api_key),
+):
+    """Получение информации о конкретном чате по telegram_chat_id или cvgorod_chat_id."""
+    # Сначала пробуем найти по telegram_chat_id
+    query = """
+        SELECT 
+            c.id,
+            c.cvgorod_chat_id,
+            c.name,
+            c.chat_type,
+            c.is_active,
+            c.members_count,
+            c.customer_id,
+            cu.name as customer_name,
+            cu.sync_id as customer_sync_id,
+            COUNT(m.id) as messages_count,
+            MAX(m.timestamp) as last_message_at
+        FROM chats c
+        LEFT JOIN customers cu ON c.customer_id = cu.id
+        LEFT JOIN messages m ON c.id = m.chat_id
+        WHERE c.id = $1 OR c.cvgorod_chat_id = $1
+        GROUP BY c.id, c.cvgorod_chat_id, c.name, c.chat_type, c.is_active, 
+                 c.members_count, c.customer_id, cu.name, cu.sync_id
+    """
+    row = await db.fetchrow(query, chat_id)
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    
+    return ChatResponse(
+        id=row["id"],
+        cvgorod_chat_id=row["cvgorod_chat_id"],
+        name=row["name"],
+        chat_type=row["chat_type"] or "group",
+        is_active=row["is_active"],
+        members_count=row["members_count"] or 0,
+        messages_count=row["messages_count"] or 0,
+        last_message_at=row["last_message_at"].isoformat() if row["last_message_at"] else None,
+        customer_id=row["customer_id"],
+        customer_name=row["customer_name"],
+        customer_sync_id=row["customer_sync_id"],
+    )
+
+
 @router.get("/chats/{chat_id}/participants", response_model=ChatParticipantsResponse)
 async def get_chat_participants(
     chat_id: int,
