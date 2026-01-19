@@ -29,7 +29,10 @@ router = APIRouter()
 class SendMessageRequest(BaseModel):
     """Запрос на отправку одного сообщения."""
     chat_id: int | None = None  # telegram chat_id
-    cvgorod_chat_id: int | None = None  # альтернативный ID из CVGorod API
+    cvgorod_chat_id: int | None = None  # ID из CVGorod API
+    customer_uuid: str | None = None  # UUID клиента из УЗ API
+    sync_id: str | None = None  # 1С ID "КА-..."
+    customer_id: int | None = None  # внутренний ID Hub
     text: str
     context: str | None = None
 
@@ -44,8 +47,11 @@ class SendMessageResponse(BaseModel):
 
 class BatchMessageItem(BaseModel):
     """Элемент пакета сообщений."""
-    chat_id: int | None = None
-    cvgorod_chat_id: int | None = None
+    chat_id: int | None = None  # telegram chat_id
+    cvgorod_chat_id: int | None = None  # ID из CVGorod API
+    customer_uuid: str | None = None  # UUID клиента из УЗ API
+    sync_id: str | None = None  # 1С ID "КА-..."
+    customer_id: int | None = None  # внутренний ID Hub
     text: str
     context: str | None = None
 
@@ -96,11 +102,28 @@ class BatchInfo(BaseModel):
 # HELPER FUNCTIONS
 # ============================================================
 
-async def resolve_chat_id(chat_id: int | None, cvgorod_chat_id: int | None) -> int:
-    """Получить telegram chat_id по cvgorod_chat_id если нужно."""
+async def resolve_chat_id(
+    chat_id: int | None = None,
+    cvgorod_chat_id: int | None = None,
+    customer_uuid: str | None = None,
+    sync_id: str | None = None,
+    customer_id: int | None = None,
+) -> int:
+    """
+    Резолв любого идентификатора в telegram_chat_id.
+    
+    Приоритет:
+    1. chat_id (прямой telegram ID)
+    2. cvgorod_chat_id (ID из CVGorod API)
+    3. customer_uuid (UUID из УЗ API)
+    4. sync_id (1С ID "КА-...")
+    5. customer_id (внутренний ID Hub)
+    """
+    # 1. Прямой telegram ID
     if chat_id:
         return chat_id
     
+    # 2. По cvgorod_chat_id
     if cvgorod_chat_id:
         row = await db.fetchrow(
             "SELECT id FROM chats WHERE cvgorod_chat_id = $1",
@@ -113,9 +136,49 @@ async def resolve_chat_id(chat_id: int | None, cvgorod_chat_id: int | None) -> i
             detail=f"Chat with cvgorod_chat_id={cvgorod_chat_id} not found"
         )
     
+    # 3. По customer_uuid (UUID из УЗ API)
+    if customer_uuid:
+        row = await db.fetchrow(
+            "SELECT chat_id FROM customer_uuid_mapping WHERE customer_uuid = $1",
+            customer_uuid
+        )
+        if row and row["chat_id"]:
+            return row["chat_id"]
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chat for customer_uuid={customer_uuid[:8]}... not found"
+        )
+    
+    # 4. По sync_id (1С ID)
+    if sync_id:
+        row = await db.fetchrow("""
+            SELECT c.id FROM chats c
+            JOIN customers cu ON c.customer_id = cu.id
+            WHERE cu.sync_id = $1
+        """, sync_id)
+        if row:
+            return row["id"]
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chat for sync_id={sync_id} not found"
+        )
+    
+    # 5. По customer_id (внутренний ID Hub)
+    if customer_id:
+        row = await db.fetchrow(
+            "SELECT id FROM chats WHERE customer_id = $1",
+            customer_id
+        )
+        if row:
+            return row["id"]
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chat for customer_id={customer_id} not found"
+        )
+    
     raise HTTPException(
         status_code=400,
-        detail="Either chat_id or cvgorod_chat_id must be provided"
+        detail="No identifier provided (chat_id, cvgorod_chat_id, customer_uuid, sync_id, or customer_id required)"
     )
 
 
@@ -133,10 +196,21 @@ async def send_message(
     
     Сообщение НЕ отправляется сразу — требует одобрения администратора.
     
-    Можно указать либо chat_id (telegram), либо cvgorod_chat_id.
+    Поддерживаемые идентификаторы (в порядке приоритета):
+    - chat_id: прямой telegram ID
+    - cvgorod_chat_id: ID из CVGorod API
+    - customer_uuid: UUID клиента из УЗ API
+    - sync_id: 1С ID (КА-...)
+    - customer_id: внутренний ID Hub
     """
     # Резолвим chat_id
-    telegram_chat_id = await resolve_chat_id(request.chat_id, request.cvgorod_chat_id)
+    telegram_chat_id = await resolve_chat_id(
+        chat_id=request.chat_id,
+        cvgorod_chat_id=request.cvgorod_chat_id,
+        customer_uuid=request.customer_uuid,
+        sync_id=request.sync_id,
+        customer_id=request.customer_id,
+    )
     
     # Получаем имя чата
     chat = await db.get_chat(telegram_chat_id)
@@ -186,7 +260,13 @@ async def send_batch(
     for idx, msg in enumerate(request.messages):
         # Резолвим chat_id
         try:
-            telegram_chat_id = await resolve_chat_id(msg.chat_id, msg.cvgorod_chat_id)
+            telegram_chat_id = await resolve_chat_id(
+                chat_id=msg.chat_id,
+                cvgorod_chat_id=msg.cvgorod_chat_id,
+                customer_uuid=msg.customer_uuid,
+                sync_id=msg.sync_id,
+                customer_id=msg.customer_id,
+            )
         except HTTPException as e:
             logger.warning(f"Skipping message {idx}: {e.detail}")
             continue
@@ -568,3 +648,163 @@ async def delete_pending(
     )
 
     return {"status": "deleted", "pending_id": pending_id}
+
+
+# ============================================================
+# MAPPING ENDPOINTS
+# ============================================================
+
+class MappingStats(BaseModel):
+    """Статистика маппинга UUID."""
+    total: int
+    with_telegram: int
+    without_telegram: int
+    last_sync: str | None = None
+
+
+@router.get("/mapping/stats", response_model=MappingStats)
+async def get_mapping_stats(
+    api_key: str = Depends(verify_api_key),
+):
+    """Статистика маппинга customer_uuid → telegram_chat_id."""
+    stats = await db.fetchrow("""
+        SELECT 
+            COUNT(*) as total,
+            COUNT(chat_id) as with_telegram,
+            COUNT(*) - COUNT(chat_id) as without_telegram,
+            MAX(updated_at) as last_sync
+        FROM customer_uuid_mapping
+    """)
+    
+    return MappingStats(
+        total=stats["total"] or 0,
+        with_telegram=stats["with_telegram"] or 0,
+        without_telegram=stats["without_telegram"] or 0,
+        last_sync=str(stats["last_sync"]) if stats["last_sync"] else None,
+    )
+
+
+@router.post("/mapping/sync")
+async def sync_mapping(
+    api_key: str = Depends(verify_api_key),
+):
+    """
+    Ручной запуск синхронизации маппинга из УЗ API.
+    
+    Обычно запускается автоматически раз в сутки.
+    """
+    from services.uz_api import uz_api
+    from datetime import datetime, UTC
+    
+    start_time = datetime.now(UTC)
+    result = {
+        "total": 0,
+        "synced": 0,
+        "with_telegram": 0,
+        "without_telegram": 0,
+        "errors": [],
+    }
+
+    try:
+        # 1. Получаем чаты из УЗ API
+        chatbots = await uz_api.get_chatbots()
+        
+        if not chatbots:
+            result["errors"].append("No chatbots received from UZ API")
+            return result
+        
+        result["total"] = len(chatbots)
+
+        # 2. Обрабатываем каждый чат
+        for chat in chatbots:
+            try:
+                # Находим telegram_chat_id и sync_id
+                row = await db.fetchrow("""
+                    SELECT c.id as telegram_chat_id, cu.sync_id
+                    FROM chats c
+                    LEFT JOIN customers cu ON c.customer_id = cu.id
+                    WHERE c.cvgorod_chat_id = $1
+                """, chat.id)
+
+                telegram_chat_id = row["telegram_chat_id"] if row else None
+                sync_id = row["sync_id"] if row else None
+
+                if telegram_chat_id:
+                    result["with_telegram"] += 1
+                else:
+                    result["without_telegram"] += 1
+
+                # Upsert в маппинг
+                await db.execute("""
+                    INSERT INTO customer_uuid_mapping 
+                        (customer_uuid, cvgorod_chat_id, chat_id, customer_name, sync_id, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, NOW())
+                    ON CONFLICT (customer_uuid) DO UPDATE SET
+                        cvgorod_chat_id = EXCLUDED.cvgorod_chat_id,
+                        chat_id = EXCLUDED.chat_id,
+                        customer_name = EXCLUDED.customer_name,
+                        sync_id = EXCLUDED.sync_id,
+                        updated_at = NOW()
+                """, chat.customer_id, chat.id, telegram_chat_id, chat.name, sync_id)
+                
+                result["synced"] += 1
+
+            except Exception as e:
+                result["errors"].append(f"Error processing chat {chat.id}: {e}")
+
+        result["duration_seconds"] = (datetime.now(UTC) - start_time).total_seconds()
+
+    except Exception as e:
+        result["errors"].append(str(e))
+
+    return {
+        "status": "ok" if not result.get("errors") else "partial",
+        "total": result.get("total", 0),
+        "synced": result.get("synced", 0),
+        "with_telegram": result.get("with_telegram", 0),
+        "duration_seconds": result.get("duration_seconds", 0),
+        "errors": result.get("errors", [])[:5],
+    }
+
+
+@router.get("/mapping/lookup/{identifier}")
+async def lookup_mapping(
+    identifier: str,
+    api_key: str = Depends(verify_api_key),
+):
+    """
+    Поиск маппинга по любому идентификатору.
+    
+    Принимает: UUID, sync_id (КА-...), cvgorod_chat_id
+    """
+    # Пробуем как UUID
+    row = await db.fetchrow(
+        "SELECT * FROM customer_uuid_mapping WHERE customer_uuid::text = $1",
+        identifier
+    )
+    
+    # Пробуем как sync_id
+    if not row:
+        row = await db.fetchrow(
+            "SELECT * FROM customer_uuid_mapping WHERE sync_id = $1",
+            identifier
+        )
+    
+    # Пробуем как cvgorod_chat_id
+    if not row and identifier.isdigit():
+        row = await db.fetchrow(
+            "SELECT * FROM customer_uuid_mapping WHERE cvgorod_chat_id = $1",
+            int(identifier)
+        )
+    
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Mapping for '{identifier}' not found")
+    
+    return {
+        "customer_uuid": str(row["customer_uuid"]),
+        "cvgorod_chat_id": row["cvgorod_chat_id"],
+        "chat_id": row["chat_id"],
+        "customer_name": row["customer_name"],
+        "sync_id": row["sync_id"],
+        "updated_at": str(row["updated_at"]) if row["updated_at"] else None,
+    }
