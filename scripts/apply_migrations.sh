@@ -24,6 +24,7 @@ MIGRATIONS=(
     "migrate_add_customers.sql"
     "migrate_add_unique_message_index.sql"
     "migrate_add_cvgorod_chat_id.sql"
+    "migrate_add_batch_sending.sql"
 )
 
 for migration in "${MIGRATIONS[@]}"; do

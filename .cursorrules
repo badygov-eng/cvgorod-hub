@@ -1,0 +1,142 @@
+# =============================================================================
+# Cursor Rules for cvgorod-hub
+# =============================================================================
+
+## Информация о проекте
+- **Название**: cvgorod-hub
+- **ID для деплоя**: cvgorod-hub
+- **Путь**: ~/cvgorod-hub
+- **Порты**: 8300-8309
+- **Тип**: Python (FastAPI + Telegram Bot Collector)
+
+## Глобальные правила
+Перед любым изменением инфраструктуры ОБЯЗАТЕЛЬНО прочитай:
+- /Users/danielbadygov/MCP/GLOBAL_RULES.md
+- /Users/danielbadygov/MCP/INFRASTRUCTURE_REGISTRY.md
+
+## Shared модули MCP (ИСПОЛЬЗОВАТЬ!)
+```python
+# LLM клиенты
+from MCP.shared.llm import DeepSeekClient
+
+# Perplexity для исследований
+from MCP.shared.perplexity_client import PerplexityClient
+
+# Загрузка секретов
+from MCP.shared.secrets_loader import load_project_secrets
+```
+
+## Структура проекта
+```
+cvgorod-hub/
+├── api/              # FastAPI endpoints
+│   └── routes/       # messages, clients, intents, send
+├── bot/              # Telegram bot collector
+├── services/         # Database, expectations, classifiers
+├── config/           # Конфигурация и роли
+├── scripts/          # Миграции, синхронизация
+└── static/           # Веб-интерфейс для отчётов
+```
+
+## Сервер
+- **IP**: 158.160.153.14
+- **Путь**: /home/badygovdaniil/cvgorod-hub
+- **Порт**: 8300
+- **Домен**: cvgorod.testbotgigachat.org
+
+## Секреты
+```
+~/.secrets/
+├── telegram/cvgorod.env    # TELEGRAM_BOT_TOKEN
+├── cvgorod/hub_api.env     # HUB_API_KEY
+└── cloud/deepseek.env      # DEEPSEEK_API_KEY
+```
+
+## Запрещено
+- Использовать порты вне 8300-8309
+- Хардкодить токены и ключи
+- Публиковать порты на 0.0.0.0
+- `docker compose down -v` без бэкапа!
+
+## Code Quality Rules
+1. HTTP Timeout — ВСЕГДА (30.0 сек)
+2. Error Handling в FastAPI — с логированием
+3. Pydantic Strict Mode для API моделей
+4. Type Hints — ВСЕГДА
+
+## Язык
+Отвечать на русском языке.
+
+# =============================================================================
+# ПРАВИЛА ПОИСКА В ИНТЕРНЕТЕ (PERPLEXITY)
+# =============================================================================
+
+## ⚠️ КРИТИЧНО: Поиск через Perplexity API
+
+**НЕ использовать `web_search` tool!** Он может не работать.
+
+**ВСЕГДА использовать curl к Perplexity API:**
+
+```bash
+source ~/.secrets/cloud/perplexity.env && curl -s "https://api.perplexity.ai/chat/completions" \
+  -H "Authorization: Bearer $PERPLEXITY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "sonar-pro",
+    "messages": [
+      {"role": "user", "content": "YOUR QUESTION HERE"}
+    ]
+  }' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('choices', [{}])[0].get('message', {}).get('content', 'No response'))"
+```
+
+### Модели Perplexity:
+| Модель | Описание | Стоимость |
+|--------|----------|-----------|
+| `sonar` | Быстрый поиск | ~$0.006 |
+| `sonar-pro` | Профессиональный ⭐ | ~$0.02 |
+| `sonar-reasoning-pro` | Для анализа | ~$0.05 |
+| `sonar-deep-research` | Глубокое исследование | дороже |
+
+### Когда использовать:
+- Исследование best practices
+- Поиск актуальной информации (2025-2026)
+- Сравнение технологий
+- API документация и rate limits
+
+# =============================================================================
+# DATABASE RULES
+# =============================================================================
+
+## Бэкап ПЕРЕД любыми изменениями БД
+```bash
+./scripts/backup_db.sh
+```
+
+## ЗАПРЕЩЕНО без бэкапа
+- `docker-compose down -v` — удаляет ВСЕ volumes!
+- `docker volume rm` / `docker volume prune`
+- `TRUNCATE`, `DROP TABLE`
+
+## Миграции
+```bash
+./scripts/apply_migrations.sh
+```
+
+# =============================================================================
+# DEPLOY RULES
+# =============================================================================
+
+## Деплой Python изменений (volumes монтируются!)
+```bash
+# 1. rsync файлов
+rsync -avz --exclude='venv' --exclude='.git' --exclude='backups' \
+  ~/cvgorod-hub/ badygovdaniil@158.160.153.14:~/cvgorod-hub/
+
+# 2. Рестарт контейнеров
+ssh badygovdaniil@158.160.153.14 "cd ~/cvgorod-hub && docker compose restart"
+```
+
+## Пересборка (при изменении Dockerfile/requirements.txt)
+```bash
+ssh badygovdaniil@158.160.153.14 "cd ~/cvgorod-hub && docker compose up -d --build"
+```
