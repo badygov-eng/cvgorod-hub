@@ -48,10 +48,15 @@ class STTService:
                 except Exception as e:
                     logger.warning(f"Failed to load Yandex secrets: {e}")
 
-        self.is_configured = bool(self.api_key and self.folder_id)
+        # Проверяем включён ли STT (по умолчанию выключен)
+        stt_enabled = os.getenv("YANDEX_STT_ENABLED", "false").lower() in ("true", "1", "yes")
         
-        if self.is_configured:
-            logger.info("Yandex STT configured successfully")
+        self.is_configured = bool(self.api_key and self.folder_id and stt_enabled)
+        
+        if not stt_enabled:
+            logger.info("Yandex STT disabled (YANDEX_STT_ENABLED=false)")
+        elif self.is_configured:
+            logger.info("Yandex STT configured and enabled")
         else:
             logger.warning("Yandex STT not configured (missing API key or folder ID)")
 
